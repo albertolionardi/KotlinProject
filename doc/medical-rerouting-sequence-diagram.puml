@@ -1,0 +1,180 @@
+@startuml
+'https://plantuml.com/sequence-diagram
+
+autonumber
+
+actor "actor" as Actor
+
+participant "coreSim: coreSimulation" as cs
+participant "logger: Logger" as logger
+participant "emc: EMC" as emc
+participant "ep: emergencyPhase" as emergencyPhase
+participant "pp: planningPhase" as planningPhase
+participant "ap: allocationPhase" as allocationPhase
+participant "up: updatePhase" as updatePhase
+participant "emergencySeverity1: Emergency" as severity1
+participant "emergencySeverity2: Emergency" as severity2
+participant "county: Map" as county
+participant "finder: Finder" as finder
+participant "hospital: MedicalStation" as hospital
+participant "hospitalVertex: Vertex" as hospitalVertex
+participant "street: Street" as street
+participant "requirement: Requirement" as requirement
+participant "ambulance1: MedicalVehicle" as ambulance1
+/' current path of ambulance1 '/
+participant "path: Path" as path
+participant "path2: Path" as newPath
+participant "ambulance2: MedicalVehicle" as ambulance2
+participant "emergencyDoctorCar: MedicalVehicle" as doctorCar
+
+autoactivate on
+Actor -> cs : run()
+cs -> logger: simulateTick(tick)
+logger --> cs
+cs -> emc: getEmergencies()
+emc --> cs: emergencies
+cs -> emergencyPhase: assignEmergencies(emergencies)
+emergencyPhase -> severity2: getStreet()
+severity2 --> emergencyPhase: streetId
+emergencyPhase -> finder: getClosestStation(streetId, MedicalStation.KClass)
+finder -> county: getStreetById(streetId)
+county --> finder: Street
+    loop 2 times, for source and target
+        finder -> street : getSource(sourceID)
+            street --> finder : sourceID
+            finder -> finder : dijkstra(source, {...} , height = 0)
+            finder -> hospitalVertex: getBaseStation()
+            hospitalVertex --> finder: medicalStationVertexId
+            finder -> county: getBaseById(medicalStationVertexId)
+            county --> finder: hospital
+            finder --> finder : pathToMedicalStation
+    end
+finder --> emergencyPhase: stationId
+deactivate finder
+emergencyPhase -> severity2: getId()
+severity2 --> emergencyPhase: emergencyId
+
+
+emergencyPhase -> emc: assignStation(emergencyId, severity2)
+emc --> emergencyPhase
+emergencyPhase -> logger: emergencyAssignment(emergencyId, stationId)
+logger --> emergencyPhase
+emergencyPhase --> cs
+
+cs -> planningPhase: sortOngoingEmergencies()
+planningPhase -> emc: getOngoingEmergencies()
+emc --> planningPhase: sortedOngoingEmergenciesList
+planningPhase -> emc: setOngoingEmergencies(sortedOngoingEmergenciesList)
+emc --> planningPhase
+planningPhase --> cs
+
+cs -> allocationPhase: allocateAssets(tick)
+allocationPhase -> emc: getOngoingEmergencies()
+emc --> allocationPhase: sortedOngoingEmergenciesList
+allocationPhase -> severity2: getId()
+severity2 --> allocationPhase: emergencyId
+allocationPhase -> emc: getAssignStation(emergencyId)
+emc --> allocationPhase: hospital
+allocationPhase -> allocationPhase : allocateMedicalStationVehicles(hospital, emergencySeverity2)
+allocationPhase -> severity2: getRequirement()
+severity2 --> allocationPhase: requirement
+allocationPhase -> hospital: getVehicles()
+hospital --> allocationPhase: medicalVehicleList
+allocationPhase -> requirement: getMedicalRequirement()
+requirement --> allocationPhase: requiredVehicleList
+/' loop over requiredVehicleList and medicalVehicleList to find if they match '/
+allocationPhase -> ambulance1: getType()
+ambulance1 --> allocationPhase: MedicalVehicleType.AMBULANCE
+allocationPhase -> ambulance1: isAvailable()
+ambulance1 --> allocationPhase: false
+allocationPhase -> ambulance1 : getState()
+ambulance1 --> allocationPhase : VehicleState.DISPATCHED
+allocationPhase -> ambulance1: getId()
+ambulance1 --> allocationPhase: ambulance1Id
+allocationPhase -> emc: getEmergencyFromVehicle(ambulance1Id)
+emc --> allocationPhase: emergencySeverity1
+allocationPhase -> severity1: getSeverity()
+severity1 --> allocationPhase: EmergencySeverity.LOW
+allocationPhase -> severity2: getSeverity()
+severity2 --> allocationPhase: EmergencySeverity.MEDIUM
+/' allocationPhase -> severity1: getSeverity().equals(EmergencySeverity.MEDIUM) '/
+allocationPhase -> ambulance1: getHeight()
+ambulance1 --> allocationPhase: height
+allocationPhase -> ambulance1: getPath()
+ambulance1 --> allocationPhase: path
+allocationPhase -> allocationPhase: tickToWeight(tick)
+allocationPhase --> allocationPhase: weight
+allocationPhase -> path: getPosition(weight)
+path --> allocationPhase: Pair<offset, street2Id>
+allocationPhase -> severity2: getStreet()
+severity2 --> allocationPhase: streetId
+allocationPhase -> finder: getPath(street2Id, streetId, height, offset)
+finder --> allocationPhase: newPath
+allocationPhase -> ambulance1: setPath(newPath)
+ambulance1 --> allocationPhase
+allocationPhase -> severity2: getId()
+severity2 --> allocationPhase: emergencyId
+allocationPhase -> logger: assetReallocation(ambulance1Id, emergencyId)
+logger --> allocationPhase
+
+allocationPhase -> ambulance2: getType()
+ambulance2 --> allocationPhase: MedicalVehicleType.AMBULANCE
+allocationPhase -> ambulance2: isAvailable()
+ambulance2 --> allocationPhase: true
+allocationPhase -> hospital: canStaffVehicle(ambulance2)
+hospital --> allocationPhase: true
+allocationPhase -> ambulance2: getHeight()
+ambulance2 --> allocationPhase: height
+allocationPhase -> hospital: getId()
+hospital --> allocationPhase: hospitalId
+allocationPhase -> finder: getVertexByStationId(hospitalId)
+county --> allocationPhase: vertexId
+allocationPhase -> finder: getPath(vertexId, streetId target, height, 0)
+finder --> allocationPhase: newPath
+allocationPhase -> newPath: getLength()
+newPath --> allocationPhase: length
+allocationPhase -> allocationPhase: weightToTick(length)
+allocationPhase --> allocationPhase: ticksToArrive
+allocationPhase -> ambulance2: setPath(newPath)
+ambulance2 --> allocationPhase
+allocationPhase -> ambulance2: getId()
+ambulance2 --> allocationPhase: ambulance2Id
+allocationPhase -> logger: assetAllocation(ambulance2Id, emergencyId ,ticksToArrive)
+logger --> allocationPhase
+
+
+allocationPhase -> doctorCar: getType()
+doctorCar --> allocationPhase: MedicalVehicleType.EMERGENCY_DOCTOR_CAR
+allocationPhase -> doctorCar: isAvailable()
+doctorCar --> allocationPhase: true
+allocationPhase -> hospital: canStaffVehicle(doctorCar)
+hospital --> allocationPhase: true
+allocationPhase -> doctorCar: getHeight()
+doctorCar --> allocationPhase: height
+allocationPhase -> hospital: getId()
+hospital --> allocationPhase: hospitalId
+
+allocationPhase -> finder: getVertexByStationId(hospitalId)
+finder --> allocationPhase: vertexId
+allocationPhase -> finder: getPath(vertexId, streetId target, height, 0)
+finder --> allocationPhase: newPath
+allocationPhase -> newPath: getLength()
+newPath --> allocationPhase: length
+allocationPhase -> allocationPhase: weightToTick(length)
+allocationPhase --> allocationPhase: ticksToArrive
+allocationPhase -> doctorCar: setPath(newPath)
+doctorCar --> allocationPhase
+allocationPhase -> doctorCar: getId()
+doctorCar --> allocationPhase: doctorCarId
+allocationPhase -> logger: assetAllocation(doctorCarId, emergencyId, ticksToArrive)
+logger --> allocationPhase
+allocationPhase --> cs :listOfVehicleID
+
+/' request phase but it's not needed here '/
+
+cs -> updatePhase: update(tick, listOfVehicleID)
+note right
+for details see sequence diagram of full round
+end note
+updatePhase --> cs
+@enduml

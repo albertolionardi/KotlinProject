@@ -1,0 +1,329 @@
+@startuml
+hide empty description
+
+
+[*] --> ParsingStarted: startParsing()
+ParsingStarted --> ParsingPhase: parseCounty()
+ParsingPhase --> Fail: parseCounty() [incorrect syntax] / log()
+ParsingPhase --> ParsingCounty: parseCounty() [correct syntax]
+ParsingCounty --> ParsingVertex: getVertex() [available]
+ParsingVertex --> ParsingCounty: checkVertexSyntax() [correct]
+ParsingVertex --> Fail: checkVertexSyntax() [incorrect] /log()
+
+ParsingCounty --> ParsingStreets: getVertex()[ no vertex available]
+ParsingStreets --> ParsingStreet: getStreet() [available]
+ParsingStreet --> ParsingStreets: checkStreetSyntax() [correct]
+ParsingStreet --> Fail: checkStreetSyntax() [incorrect] /log()
+
+ParsingStreets --> ParsingBaseStations: getStreet()[no street available]
+ParsingBaseStations --> ParsingBase: getBase() [available]
+ParsingBase --> ParsingBaseStations: checkBaseSyntax() [correct]
+ParsingBase --> Fail: checkBaseSyntax() [incorrect] /log()
+
+ParsingBaseStations --> ParsingVehicles: getBase()[no base available]
+ParsingVehicles --> ParsingVehicle: getVehicle() [available]
+ParsingVehicle --> ParsingVehicles: checkVehicleSyntax() [correct]
+ParsingVehicle --> Fail: checkVehicleSyntax() [incorrect] /log()
+
+ParsingVehicles --> ParsingEmergencies: getVehicle()[no vehicle available]
+ParsingEmergencies --> ParsingEmergency: getEmergency() [available]
+ParsingEmergency --> ParsingEmergencies: checkEmergencySyntax() [correct]
+ParsingEmergency --> Fail: checkEmergencySyntax() [incorrect] /log()
+
+ParsingEmergencies --> ParsingEvents: getEmergency()[no emergency available]
+ParsingEvents --> ParsingEvent: getEvent() [available]
+ParsingEvent --> ParsingEvents: checkEventSyntax() [correct]
+ParsingEvent --> Fail: checkEventSyntax() [incorrect] /log()
+
+ParsingEvents --> ValidationPhase: getEvent() [no event available]
+ValidationPhase  --> CountyValidation: validateCounty()
+
+CountyValidation -->VertexAvailable: getVetrex() [available]
+CountyValidation -->StreetValidation: getVetrex() [all vertices checked]
+
+StreetValidation -->StreetAvailable: getStreet() [available]
+StreetValidation -->BaseValidation: getStreet() [all streets checked]
+
+StreetAvailable--> StreetChecked: checkStreet() [true]
+StreetChecked  --> StreetValidation: addStreet()
+StreetAvailable--> Fail: checkStreet() [false]  \n log()
+
+
+VertexAvailable--> VertexChecked: checkVertex() [true]
+VertexChecked  --> CountyValidation: addVertex()
+VertexAvailable--> Fail: checkVertex() [false]  \n log()
+
+BaseValidation -->BaseAvailable: getBase() [available]
+BaseValidation -->VehicleValidation: getBase() [all Bases checked]
+
+BaseAvailable--> BaseChecked: checkBase() [true]
+BaseChecked  --> BaseValidation: addBase()
+BaseAvailable--> Fail: checkBase() [false]  \n log()
+
+
+VehicleValidation -->VehicleAvailable: getVehicle() [available]
+VehicleValidation -->EmergencyValidation: getVehicle() [all Vehicles checked]
+
+VehicleAvailable--> VehicleChecked: checkVehicle() [true]
+VehicleChecked  --> VehicleValidation: addVehicle()
+VehicleAvailable--> Fail: checkVehicle() [false]  \n log()
+
+EmergencyValidation -->EmergencyAvailable: getEmergency() [available]
+EmergencyValidation -->EventValidation: getEmergency() [all Emergencies checked]
+
+EmergencyAvailable--> EmergencyChecked: checkEmergency() [true]
+EmergencyChecked  --> EmergencyValidation: addEmergency()
+EmergencyAvailable--> Fail: checkEmergency() [false]  \n log()
+
+EventValidation -->EventAvailable: getEvent() [available]
+EventValidation -->EndValidation: getEvent() [all Events checked]
+
+EventAvailable--> EventChecked: checkEvent() [true]
+EventChecked  --> EventValidation: addEvent()
+EventAvailable--> Fail: checkVehicle() [false]  \n log()
+
+EndValidation --> StartOfRound: simulateRound()
+
+Fail --> [*]
+
+
+/' Emergency Phase
+   ========================================================================= '/
+state EmergencyPhase #lightblue
+StartOfRound --> EmergencyPhase : assignEmergencies()
+
+EmergencyPhase --> SearchingNearestStation: getEmergency() [unassigned emergency available]
+
+SearchingNearestStation --> StationFound: findStation() [one station found]
+
+SearchingNearestStation --> MultipleStationsFound: findStation() [multiple stations found]
+
+MultipleStationsFound --> StationFound: getByLowestID()
+
+StationFound --> EmergencyPhase: assignEmergencyToStation() / log()
+
+
+/' Planning Phase
+  ========================================================================= '/
+state PlanningPhase #lightblue
+EmergencyPhase --> PlanningPhase: getEmergency()  [all emergencies assigned]
+PlanningPhase: prioritize assigned emergencies according to severity & id
+
+
+/' Allocation Phase
+  ========================================================================= '/
+state AllocationPhase #lightblue
+PlanningPhase --> AllocationPhase: prioritizeAssignedEmergencies()
+AllocationPhase: allocate assets for emergencies, send requests for unfulfillable requirements
+
+/' AllocationPhase --> EmergencyAvailable: getEmergency() [emergency available]'/
+AllocationPhase --> RequestPhase: getEmergency() [all emergencies checked]
+
+AllocationPhase --> HandlingEmergency: getEmergency() [emergency available]
+
+/' EmergencyAvailable --> AllocationPhase: getEmergency() [no emergency available]  '/
+
+HandlingEmergency --> AllocationPhase: getEmergency() [no emergency available]
+
+HandlingEmergency --> RequirementAvailable: nextRequirement() [requirement available]
+HandlingEmergency --> AllRequirementsChecked: nextRequirement() [no requirement available]
+
+RequirementAvailable --> AssetAvailable: findAsset() [asset available]
+RequirementAvailable --> NoAssetAvailable: findAsset() [no asset available]
+
+NoAssetAvailable --> VehicleTypeAvailable: checkVehicleType() [available]
+NoAssetAvailable --> VehicleUnavailableForReallocation: checkVehicleType() [unavailable]
+
+VehicleUnavailableForReallocation --> HandlingEmergency: addToRequest()
+
+VehicleTypeAvailable -->VehicleDispatched: vehicleDispatched() [true]
+VehicleTypeAvailable -->VehicleUnavailableForReallocation: vehicleDispatched() [false]
+
+VehicleDispatched --> VehicleUnavailableForReallocation  : severityHigher() [false]
+VehicleDispatched --> VehicleAvailableForReallocation : severityHigher() [true]
+
+VehicleAvailableForReallocation  --> HandlingEmergency: updatePreviousEmergencyReq()  \n log() \n   updateMaps()  \n [reallocate]
+
+
+
+
+AssetAvailable --> AssetNeedsChecking: capacityCheck() [needed]
+AssetAvailable --> NoChecking: capacityCheck() [not needed]
+
+AssetNeedsChecking --> LastRequiredVehicleFullfillsCapacity: capacityFulfilled() [yes]
+
+LastRequiredVehicleFullfillsCapacity --> AssetNotInRange: getDistance() [not in range]
+LastRequiredVehicleFullfillsCapacity --> AssetInRange: getDistance() [in range]
+NoChecking --> AssetInRange: getDistance() [in range]
+NoChecking --> AssetNotInRange: getDistance() [not in range]
+
+
+AssetNeedsChecking --> AssetCapacityTooSmall: capacityFulfilled()[no]
+AssetCapacityTooSmall --> RequirementAvailable: checkNextAsset()
+
+/'AssetAvailable --> AssetInRange: getDistance() [in range]
+AssetAvailable --> AssetNotInRange: getDistance() [not in range]
+
+NoAssetAvailable --> HandlingEmergency: addToRequest()'/
+
+AssetInRange --> HandlingEmergency: allocateAsset() / log()
+AssetNotInRange --> RequirementAvailable: checkNextAsset()
+
+AllRequirementsChecked --> OpenRequests: getRequests() [requests open]
+AllRequirementsChecked --> AllocationPhase: getRequests() [no requests open]
+
+OpenRequests --> StationForRequestFound: getNearestStationForType() [single station found]
+OpenRequests --> MultipleStationsForRequestFound: getNearestStationForType() [multiple station found]
+MultipleStationsForRequestFound --> StationForRequestFound: getByLowestID()
+
+StationForRequestFound --> RequestSent: sendRequest() / log()
+
+RequestSent --> OpenRequests: getRequests() [requests open]
+RequestSent --> AllocationPhase: getRequests() [no requests open]
+
+
+/' Request Phase
+   ========================================================================= '/
+state RequestPhase #lightblue
+/'NoEmergencyAvailable --> RequestPhase'/
+
+' state "StationAvailable" as StationAvailable_R
+' state "NoStationAvailable" as NoStationAvailable_R
+state "RequirementAvailable" as RequirementAvailable_R
+state "AllRequirementsChecked" as AllRequirementsChecked_R
+state "AssetAvailable" as AssetAvailable_R
+state "NoAssetAvailable" as NoAssetAvailable_R
+state "AssetInRange" as AssetInRange_R
+state "AssetNotInRange" as AssetNotInRange_R
+state "StationFound" as StationFound_R
+state "NoStationFound" as NoStationFound_R
+state "MultipleStationsFound" as MultipleStationsFound_R
+
+
+'/RequestPhase --> RequestsSorted: getStation() [station needs checking]
+
+/'RequestPhase --> NoStationAvailable_R: getStation() [all stations checked]
+
+StationAvailable_R --> RequestsSorted: sortRequests()'/
+
+RequestPhase --> UpdatePhase: getRequest() [no requests to handle]
+RequestPhase --> HandlingRequest: getRequest() [request available]
+
+HandlingRequest --> RequirementAvailable_R: nextRequirement() [requirement available]
+HandlingRequest --> AllRequirementsChecked_R: nextRequirement() [no requirements available]
+
+RequirementAvailable_R --> AssetAvailable_R: findAsset() [asset available]
+RequirementAvailable_R --> NoAssetAvailable_R: findAsset() [no asset found]
+
+AssetAvailable_R --> AssetInRange_R: getDistance() [in range]
+AssetAvailable_R --> AssetNotInRange_R: getDistance() [not in range]
+
+NoAssetAvailable_R --> HandlingRequest: addToRequest()
+
+AssetInRange_R --> HandlingRequest: allocateAsset() / log()
+
+AssetNotInRange_R --> RequirementAvailable_R : checkNextAsset()
+
+AllRequirementsChecked_R --> OpenRequestForSending: getOpenRequestsForSending() [requests open]
+AllRequirementsChecked_R --> RequestPhase: getOpenRequestsForSending() [no requests open]
+
+OpenRequestForSending --> StationFound_R: getNearestUnvisitedStation() [one station found]
+OpenRequestForSending --> MultipleStationsFound_R: getNearestUnvisitedStation() [multiple stations found]
+OpenRequestForSending --> NoStationFound_R: getNearestUnvisitedStation() [all stations visited]
+
+MultipleStationsFound_R --> StationFound_R: getByLowestID()
+
+' TODO: do we need to inform the initial station about the failed request?
+NoStationFound_R --> RequestPhase: log()
+
+StationFound_R --> RequestPhase: sendRequest() / log()
+
+'/NoStationAvailable_R --> RequestPhase: hasNewRequests() [new requests available]'/
+/'note on link
+    Checked after the loop to see if
+    another iteration is necessary
+end note
+'/
+
+/' Update Phase
+   ========================================================================= '/
+state UpdatePhase #lightblue
+'/NoStationAvailable_R --> UpdatePhase: hasNewRequests() [no new requests available]'/
+
+/' Updating Assets '/
+'/UpdatePhase --> NewlyAllocatedAssets: getNewlyAllocatedAssets() [newly allocated assets]
+'/UpdatePhase --> NoNewAssets: getNewlyAllocatedAssets() [no newly allocated assets]
+
+'/NewlyAllocatedAssets --> UpdatingAssetsDone: updateStatus()'/
+
+UpdatePhase --> AssetPositionUpdated: moveAllocatedVehicles()
+
+AssetPositionUpdated --> AssetArrivedAtVertex: updateStatus() [arrive at destination]
+
+AssetPositionUpdated --> UpdatingAssetsDone: updateStatus() [no change]
+
+AssetArrivedAtVertex --> UpdatingAssetsDone: log() \n updateStatus [waiting counter]
+
+/' Updating Emergencies '/
+UpdatingAssetsDone --> EmergencyHandlingStarted: updateEmergency() [all assets arrived]
+UpdatingAssetsDone --> EmergencyResolved: updateEmergency() [emergency resolved]
+UpdatingAssetsDone --> EmergencyFailed: updateEmergency() [time out]
+
+EmergencyHandlingStarted --> UpdatingEmergenciesDone: log()
+
+EmergencyFailed --> AssetsReadyToGoBack: log()
+EmergencyResolved --> AssetsReadyToGoBack: log()
+
+'/AssetsReadyToGoBack --> GroupAvailable: getAssetGroup() [group available]'/
+AssetsReadyToGoBack --> UpdatingEmergenciesDone: getAsset() [all assets updated]
+AssetsReadyToGoBack --> AssetFound: getAsset() [all assets updated]
+
+AssetFound --> ShortestPathFound: calculateDistance()
+
+ShortestPathFound --> AssetsReadyToGoBack: updateAssetStatus()
+
+UpdatingAssetsDone --> UpdatingEmergenciesDone: updateEmergency() [no special event]
+
+
+/' Updating Events '/
+UpdatingEmergenciesDone --> EndingEventsAvailable: getEndingEventsSorted() [events available]
+UpdatingEmergenciesDone --> NoEndingEventsAvailable: getEndingEventsSorted() [no events available]
+
+EndingEventsAvailable --> NoEndingEventsAvailable: remove() \n log() \n setRecalculateFlag()
+
+NoEndingEventsAvailable --> ActiveEventsAvailable: getActiveEvents() [events available]
+NoEndingEventsAvailable --> CheckingActiveEventsDone: getActiveEvents() [no events available]
+
+ActiveEventsAvailable --> UnaffectedStreetsFound: canAffectMoreStreets() [true]
+ActiveEventsAvailable --> CheckingActiveEventsDone: canAffectMoreStreets() [false]
+
+UnaffectedStreetsFound --> CheckingActiveEventsDone: applyEventToStreets() \n setRecalculateFlag()
+
+CheckingActiveEventsDone --> NewlyScheduledEventAvailable: getScheduledEventsSorted() [events available]
+CheckingActiveEventsDone --> CheckingScheduledEventsDone: getScheduledEventsSorted() [no events available]
+
+NewlyScheduledEventAvailable --> EventCanAffectStreet: canAffectStreets() [true]
+NewlyScheduledEventAvailable --> EventUnableToAffectStreet: canAffectStreets() [false]
+
+EventUnableToAffectStreet --> CheckingActiveEventsDone: rescheduleEvent()
+
+EventCanAffectStreet --> CheckingActiveEventsDone: triggerEvent() \n  log() \n setRecalculateFlag()
+
+CheckingScheduledEventsDone --> RecalculationNeeded: checkRecalculateFlag() [true]
+CheckingScheduledEventsDone --> UpdatePhaseDone: checkRecalculateFlag() [false]
+
+RecalculationNeeded --> UpdatePhaseDone: recalculatePaths() \n resetRecalculateFlag()
+
+
+UpdatePhaseDone --> EndOfRound
+
+EndOfRound --> StartOfRound: simulateRound() [tick available]
+
+
+/' End of simulation
+   ========================================================================= '/
+EndOfRound --> EndOfSimulation: simulateRound() [no tick available]
+
+EndOfSimulation --> [*]: logStatistics() / log()
+
+@enduml

@@ -1,0 +1,342 @@
+@startuml
+'https://plantuml.com/sequence-diagram
+
+
+/' settings '/
+autonumber
+autoactivate on
+
+
+/' participants
+   ========================================================================= '/
+actor       "actor"                                           as Actor
+participant "cs: CoreSimulation"                              as CoreSimulation
+participant "emc: EMC"                                        as EMC
+participant "emergencies: List<Emergency>"                    as EmergencyList
+participant "fireEmergency: Emergency"                        as FireEmergency
+participant "finder: Finder"                                  as Finder
+participant "county: County"                                  as Map
+participant "fireEmergencyStreet: Street"                     as FireEmergencyStreet
+participant "sourceVertex: Vertex"                            as SourceVertex
+participant "connectionList: List<StreetID>"                  as ConnectionList
+participant "nextStreet: Street"                              as NextStreet
+participant "pathToFireStation: Path"                         as PathToFireStation
+participant "fireStation: FireStation"                        as FireStation
+participant "ongoingEmergenciesList: List<Emergency>"         as OngoingEmergenciesList
+participant "sortedOngoingEmergenciesList: List<Emergency>"   as SortedOngoingEmergenciesList
+participant "requirement: Requirement"                        as Requirement
+participant "fireStationVehiclesList: List<Vehicle>"          as FireStationVehicle
+participant "requiredFireVehiclesList: List<FireVehicleType>" as RequiredFireVehiclesList
+participant "waterTruck1: FireVehicle"                        as WaterTruck1
+participant "waterTruck1Type: FireVehicleType"                as WaterTruck1Type
+participant "pathToEmergency: Path"                           as PathToEmergency
+participant "fireStationVehiclesList: List<Vehicle>"          as FireStationVehiclesList
+participant "logger: Logger"                                  as Logger
+participant "o: Observer"                                     as Observer
+participant "listOfOngoingEvents: List<Event>"                as ListOfOngoingEvents
+participant "roadClosureEvent: RoadClosureEvent"              as RoadClosureEvent
+
+' phases
+participant "emPhase: EmergencyPhase"     as EmergencyPhase
+participant "planPhase: PlanningPhase"    as PlanningPhase
+participant "allocPhase: AllocationPhase" as AllocationPhase
+participant "reqPhase: RequestPhase"      as RequestPhase
+participant "upPhase: UpdatePhase"        as UpdatePhase
+
+' ordering
+' ...
+
+
+Actor          ->  CoreSimulation: run()
+CoreSimulation ->  Logger : simulationTick(tick)
+Logger         --> CoreSimulation
+
+
+/' emergencyPhase
+   ========================================================================= '/
+CoreSimulation ->  EMC: getEmergencies()
+EMC            --> CoreSimulation: emergencies
+CoreSimulation ->  EmergencyPhase: assignEmergencies(emergencies)
+
+' get first element of list
+EmergencyPhase ->  EmergencyList: first()
+EmergencyList  --> EmergencyPhase: fireEmergency
+
+' find out baseStation
+EmergencyPhase ->  FireEmergency: getStreet()
+FireEmergency  --> EmergencyPhase: fireEmergencyStreetID
+EmergencyPhase ->  Finder: getClosestStation(fireEmergencyStreetID, FireStation.KClass)
+
+Finder         ->  Map: getStreetByID(fireEmergencyStreetID)
+Map            --> Finder: fireEmergencyStreet
+
+loop 2 times, for source & target
+    Finder       ->  FireEmergencyStreet: getSource()
+    FireEmergencyStreet --> Finder: sourceVertexID
+    Finder       -> Finder: dijkstra(sourceVertexID, {...}, height=0)
+
+    ' Dijkstra's algorithm
+    loop for different vertexIDs, until vertex found
+        ' no station for this vertex
+        Finder         ->  Map: getStationByVertex(sourceVertexID))
+        Map            --> Finder: null
+
+        Finder         ->  Map: getVertexByID(sourceVertexID)
+        Map            --> Finder: sourceVertex
+        Finder         ->  SourceVertex: getConnections()
+        SourceVertex   --> Finder: connectionList
+        Finder         ->  ConnectionList: first()
+        ConnectionList --> Finder: nextStreetID
+        Finder         ->  Map: getStreetByID(nextStreetID)
+        Map            --> Finder: nextStreet
+        Finder         ->  NextStreet: getSource() [or getTarget(), depending from which one we're coming]
+        NextStreet     --> Finder: sourceVertexID
+    end
+    Finder ->  Map: getStationByVertex(sourceVertexID)
+        note right
+            now the vertex with the correct station has been found
+        end note
+    Map               --> Finder: fireStationID
+    Finder            ->  Map: getStationByID(fireStationID)
+    Map               --> Finder: fireStation
+    create PathToFireStation
+    Finder            ->  PathToFireStation: PathToFireStation(...)
+    PathToFireStation --> Finder: pathToFireStation
+    Finder            --> Finder: pathToFireStation
+end
+
+' compare path lengths
+Finder             ->  PathToFireStation: getLength()
+PathToFireStation --> Finder: pathLength
+note left
+    compare both path lengths to find nearest station
+end note
+
+Finder            --> EmergencyPhase: fireStationID
+
+' assign emergency to station
+EmergencyPhase ->  FireEmergency: getID()
+FireEmergency  --> EmergencyPhase: fireEmergencyID
+EmergencyPhase ->  EMC: assignStation(fireStationID, fireEmergencyID)
+EmergencyPhase ->  Logger : emergencyAssignment(fireEmergencyID, fireStationID)
+Logger         --> EmergencyPhase
+EMC            --> EmergencyPhase
+
+EmergencyPhase --> CoreSimulation
+
+
+/' planning phase
+   ========================================================================= '/
+CoreSimulation ->  PlanningPhase: sortOngoingEmergencies()
+
+PlanningPhase                ->  EMC: getOngoingEmergencies()
+EMC                          --> PlanningPhase: ongoingEmergenciesList
+PlanningPhase                ->  OngoingEmergenciesList: sortedBy({ it.id })
+
+create SortedOngoingEmergenciesList
+OngoingEmergenciesList       ->  SortedOngoingEmergenciesList: SortedOngoingEmergenciesList(...)
+SortedOngoingEmergenciesList --> OngoingEmergenciesList: sortedOngoingEmergenciesList
+
+OngoingEmergenciesList       --> PlanningPhase: sortedOngoingEmergenciesList
+PlanningPhase                ->  EMC: setOngoingEmergencies(sortedOngoingEmergenciesList)
+destroy OngoingEmergenciesList
+EMC                          --> PlanningPhase
+
+PlanningPhase                --> CoreSimulation
+
+
+/' allocation phase
+   ========================================================================= '/
+CoreSimulation  -> AllocationPhase: allocateAssets(tick)
+
+AllocationPhase              ->  EMC: getOngoingEmergencies()
+EMC                          --> AllocationPhase: sortedOngoingEmergenciesList
+AllocationPhase              ->  SortedOngoingEmergenciesList: first()
+SortedOngoingEmergenciesList --> AllocationPhase: fireEmergency
+
+
+AllocationPhase              ->  FireEmergency: getID()
+FireEmergency                --> AllocationPhase: fireEmergencyID
+
+AllocationPhase              ->  EMC: getAssignedStation(fireEmergencyID)
+EMC                          --> AllocationPhase: fireStation
+
+
+AllocationPhase -> AllocationPhase : allocateFireStationVehicles(fireStation,fireEmergency)
+
+AllocationPhase              ->  FireEmergency: getRequirement()
+FireEmergency                --> AllocationPhase: requirement
+
+
+AllocationPhase              ->  FireStation: getVehicles()
+FireStation                  --> AllocationPhase: fireStationVehiclesList
+
+AllocationPhase              ->  Requirement: getFireRequirements()
+Requirement                  --> AllocationPhase: requiredFireVehiclesList
+AllocationPhase              -> RequiredFireVehiclesList : count({it = fireVehicleType.TRUCK_WATER})
+RequiredFireVehiclesList     --> AllocationPhase : waterTruckCount
+
+loop for each vehicle in fireStationVehiclesList
+    AllocationPhase              ->  FireStationVehiclesList: get(0)
+    FireStationVehiclesList      --> AllocationPhase: waterTruck1
+    AllocationPhase              ->  WaterTruck1: isAvailable()
+    WaterTruck1                  --> AllocationPhase : true
+    AllocationPhase              ->  WaterTruck1: getType()
+    WaterTruck1                  --> AllocationPhase: waterTruck1Type
+
+    loop for each type in requiredFireVehiclesList until found
+        AllocationPhase          ->  RequiredFireVehiclesList: get(0)
+        RequiredFireVehiclesList --> AllocationPhase: requirement1Type
+        AllocationPhase          ->  WaterTruck1Type: equals(requirement1Type)
+        WaterTruck1Type          --> AllocationPhase : true
+    end
+    AllocationPhase              ->  FireStation: canStaffVehicle(waterTruck1)
+    FireStation                  ->  WaterTruck1: getStaffCapacity()
+    WaterTruck1                  --> FireStation: waterTruck1StaffCapacity
+    FireStation                  --> AllocationPhase : true
+
+    AllocationPhase              -> WaterTruck1 : getHeight()
+    WaterTruck1                  --> AllocationPhase : height
+    AllocationPhase              -> Finder : getVertexByStation(fireStationID)
+    Finder                       --> AllocationPhase : fireStationVertexID
+
+    AllocationPhase              -> FireEmergency : getStreet()
+    FireEmergency                --> AllocationPhase : fireEmergencyStreet
+
+    AllocationPhase              -> FireEmergencyStreet : getID()
+    FireEmergencyStreet          --> AllocationPhase : fireEmergencyStreetID
+
+
+    AllocationPhase              -> Finder : getPath(fireStationVertexID,fireEmergencyStreetID,height)
+
+    create PathToEmergency
+    Finder                       ->  PathToEmergency: PathToEmergency(...)
+    PathToEmergency              --> Finder: pathToEmergency
+
+    Finder                       --> AllocationPhase : pathToEmergency
+
+    AllocationPhase              -> PathToEmergency : getLength()
+    PathToEmergency              --> AllocationPhase : pathToEmergencyLength
+
+    AllocationPhase              -> FireEmergency : getTicksLeftForArrival()
+    FireEmergency                --> AllocationPhase : ticksLeftForArrival
+
+    AllocationPhase              -> AllocationPhase : weightToTick(pathToEmergencyLength)
+    AllocationPhase              --> AllocationPhase : pathToEmergencyLengthInTicks
+
+    AllocationPhase              -> WaterTruck1 : setState(VehicleState.DISPATCHED)
+    WaterTruck1                  --> AllocationPhase
+    AllocationPhase              -> WaterTruck1 : setPath(pathToEmergency)
+    WaterTruck1                  --> AllocationPhase
+
+    AllocationPhase              -> WaterTruck1 : getID()
+    WaterTruck1                  --> AllocationPhase : waterTruck1ID
+
+    AllocationPhase              -> FireEmergency : getID()
+    FireEmergency                --> AllocationPhase : fireEmergencyID
+
+    AllocationPhase              -> Logger : assetAllocation(waterTruckID, fireEmergencyID, pathToEmergencyLengthInTicks)
+    Logger                       --> AllocationPhase :listOfVehicleID
+end
+
+    AllocationPhase              --> AllocationPhase : emptyListOfFireRequests
+    AllocationPhase              --> CoreSimulation: listOfVehicleID
+
+
+/' request phase
+   ========================================================================= '/
+CoreSimulation ->  RequestPhase : processRequest()
+RequestPhase   ->  EMC : getOpenRequests()
+EMC            --> RequestPhase : emptyListOfRequests
+RequestPhase   --> CoreSimulation : listOfVehicleID
+
+
+/' update phase
+   ========================================================================= '/
+CoreSimulation    ->  UpdatePhase : update(tick, listOfVehicleID)
+
+loop for each vehicleID in listOfVehicleID
+    UpdatePhase ->  UpdatePhase : addObserver(vehicleID)
+    UpdatePhase --> UpdatePhase
+    ' UpdatePhase ->  EMC : getVehicleFromID(vehicleID)
+    ' EMC         --> UpdatePhase : waterTruck1
+    ' UpdatePhase ->  WaterTruck1 : setState(VehicleState.DISPATCHED)
+    ' WaterTruck1 --> UpdatePhase
+end
+
+UpdatePhase       -> UpdatePhase : updateVehicles(tick)
+
+loop for each o in observers
+    UpdatePhase ->  EMC: getVehicleFromID(o)
+    EMC         --> UpdatePhase: waterTruck1
+    UpdatePhase ->  WaterTruck1: getState()
+    WaterTruck1 --> UpdatePhase: VehicleState.DISPATCHED
+    UpdatePhase ->  UpdatePhase: tickToWeight(tick)
+    UpdatePhase --> UpdatePhase: weight
+
+    UpdatePhase ->  WaterTruck1: advance(weight)
+    WaterTruck1 --> UpdatePhase
+end
+
+UpdatePhase       --> UpdatePhase
+
+UpdatePhase       ->  UpdatePhase : updateEmergencies(tick)
+UpdatePhase       ->  EMC : getOngoingEmergencies()
+EMC               --> UpdatePhase : ongoingEmergenciesList
+
+loop for each e in ongoingEmergenciesList (concrete example)
+    ' check if requirement fulfilled
+    UpdatePhase   ->  FireEmergency : getRequirement()
+    FireEmergency --> UpdatePhase : requirement
+
+    UpdatePhase   ->  Requirement : isFulfilled()
+    Requirement   --> UpdatePhase : true
+
+    UpdatePhase   ->  FireEmergency : getID()
+    FireEmergency --> UpdatePhase  : fireEmergencyID
+    UpdatePhase   ->  EMC : getVehiclesForEmergency(fireEmergencyID)
+    EMC           --> UpdatePhase : assignedVehiclesList
+
+    loop for each vehicleID in assignedVehiclesList
+        UpdatePhase ->  EMC : getVehicleFromID(vehicleID)
+        EMC         --> UpdatePhase : waterTruck1
+
+        UpdatePhase ->  WaterTruck1 : getState()
+        WaterTruck1 --> UpdatePhase : VehicleState.DISPATCHED
+        note right
+            check if all vehicle are WAITING
+        end note
+    end
+
+    UpdatePhase   ->  FireEmergency : getTicksLeft()
+    FireEmergency --> UpdatePhase : ticksLeft
+end
+
+UpdatePhase       --> UpdatePhase
+
+'updating events
+
+UpdatePhase       -> EMC : getOngoingEvents()
+EMC               --> UpdatePhase : listOfOngoingEvents
+
+loop for each e in listOfOngoingEvents
+    UpdatePhase      ->  RoadClosureEvent : update()
+    RoadClosureEvent ->  RoadClosureEvent : undo()
+    RoadClosureEvent --> RoadClosureEvent
+    RoadClosureEvent --> UpdatePhase
+    UpdatePhase      ->  RoadClosureEvent : getState()
+    RoadClosureEvent --> UpdatePhase : EventState.ENDED
+    UpdatePhase      ->  EMC : removeOngoingEvent(e)
+    EMC              --> UpdatePhase
+end
+
+UpdatePhase       ->  RoadClosureEvent : getID()
+RoadClosureEvent  --> UpdatePhase : roadClosureEventID
+UpdatePhase       ->  Logger : eventEnded(roadClosureEventID)
+Logger            --> UpdatePhase
+
+UpdatePhase       ->  EMC : getNewEvents(tick)
+EMC               --> UpdatePhase : emptyEventsList
+
+UpdatePhase       --> CoreSimulation
+@enduml

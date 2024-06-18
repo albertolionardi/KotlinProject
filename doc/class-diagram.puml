@@ -1,0 +1,933 @@
+@startuml
+skinparam linetype ortho
+
+/' typing & ids
+   ========================================================================= '/
+package ids {
+note "use inline classes for ID classes" as N1
+
+    class StreetID {
+        - id: String
+        + StreetID(String id)
+        + hashCode(): Int
+        + equals(): Boolean
+        + <T> compareTo(T comp): Int
+    }
+
+    class VertexID {
+        - id: String
+        + VertexID(String id)
+        + hashCode(): Int
+        + equals(): Boolean
+        + <T> compareTo(T comp): Int
+    }
+
+    class BaseStationID {
+        - id: Int { id >= 0 }
+        + BaseStationID(Int id)
+        + hashCode(): Int
+        + equals(): Boolean
+        + <T> compareTo(T comp): Int
+    }
+
+    class EmergencyID {
+        - id: Int { id >= 0 }
+        + EmergencyID(Int id)
+        + hashCode(): Int
+        + equals(): Boolean
+        + <T> compareTo(T comp): Int
+    }
+
+    class EventID {
+        - id: Int { id >= 0 }
+        + EventID(Int id)
+        + hashCode(): Int
+        + equals(): Boolean
+        + <T> compareTo(T comp): Int
+    }
+
+    class VehicleID {
+        - id: Int { id >= 0 }
+        + VehicleID(Int id)
+        + hashCode(): Int
+        + equals(): Boolean
+        + <T> compareTo(T comp): Int
+    }
+
+    class RequestID {
+        - id: Int { id >= 0 }
+        + RequestID(Int id)
+        + hashCode(): Int
+        + equals(): Boolean
+        + <T> compareTo(T comp): Int
+    }
+}
+
+
+/' events
+   ========================================================================= '/
+package events {
+    abstract class Event {
+        - id: EventID
+        - duration: Int
+        - startTick: Int
+        - state: EventState
+        + apply(): Boolean
+        + undo(): Unit
+        + suspend(): Unit
+        + resume(): Unit
+        + update(): Unit
+    }
+    Event o-- .ids.EventID
+    Event <|-- RoadClosureEvent
+    Event <|-- RushHourEvent
+    Event <|-- TrafficJamEvent
+    Event <|-- ConstructionSiteEvent
+    Event <|-- VehicleUnavailableEvent
+    Event *-- EventState
+
+    note right of Event::apply
+        bool indicates if application was possible
+        (if not, reschedule)
+    end note
+    note right of Event::update
+        decreases duration and possibly changes state
+    end note
+    note left of Event
+        Command pattern (sort of)
+    end note
+
+    enum EventState {
+        INACTIVE,
+        RUNNING,
+        SUSPENDED,
+        ENDED
+    }
+
+    class RoadClosureEvent {
+        - street: StreetID
+        - finder: Finder
+        + RoadClosureEvent(StreetID street, Finder finder)
+        + apply(): Boolean
+        + undo(): Unit
+        + suspend(): Unit
+        + resume(): Unit
+        + update(): Unit
+    }
+    RoadClosureEvent o-- .ids.StreetID
+    RoadClosureEvent o-- .mapping.Finder
+
+    class RushHourEvent {
+        - streetType: StreetPrimaryType
+        - weightFactor: Int
+        - finder: Finder
+        - appliedStreets: List<StreetID>
+        + RushHourEvent(StreetPrimaryType type, Int weightFactor, Finder finder)
+        + apply(): Boolean
+        + undo(): Unit
+        + suspend(): Unit
+        + resume(): Unit
+        + update(): Unit
+    }
+    RushHourEvent o-- .mapping.StreetPrimaryType
+    RushHourEvent o-- .mapping.Finder
+
+    class TrafficJamEvent {
+        - street: StreetID
+        - weightFactor: Int
+        - finder: Finder
+        + TrafficJamEvent(StreetID street, Int weightFactor, Finder finder)
+        + apply(): Boolean
+        + undo(): Unit
+        + suspend(): Unit
+        + resume(): Unit
+        + update(): Unit
+    }
+    TrafficJamEvent o-- .ids.StreetID
+    TrafficJamEvent o-- .mapping.Finder
+
+    class ConstructionSiteEvent {
+        - street: StreetID
+        - weightFactor: Int
+        - streetDirection: StreetDirection
+        - finder: Finder
+        + ConstructionSiteEvent(StreetID street, Int weightFactor, StreetDirection direction, Finder finder)
+        + apply(): Boolean
+        + undo(): Unit
+        + suspend(): Unit
+        + resume(): Unit
+        + update(): Unit
+    }
+    ConstructionSiteEvent o-- .ids.StreetID
+    ConstructionSiteEvent o-- .mapping.StreetDirection
+    ConstructionSiteEvent o-- .mapping.Finder
+
+    class VehicleUnavailableEvent {
+        - vehicle: Vehicle
+        + VehicleUnavailableEvent(Vehicle v)
+        + apply(): Boolean
+        + undo(): Unit
+        + suspend(): Unit
+        + resume(): Unit
+        + update(): Unit
+    }
+    VehicleUnavailableEvent o-- .vehicles.Vehicle
+}
+
+
+/' mapping
+   ========================================================================= '/
+package mapping {
+    class Finder {
+        - county: County
+        + Finder(County county)
+        + getClosestStation(StreetID street, BaseStation.KClass stationType): StationID
+        + getClosestStation(BaseStationID station, BaseStation.KClass stationType, List<BaseStationID> visitedStations): StationID
+        + getPath(VertexID source, StreetID target, Int height, Int offset = 0): Path
+        + getPath(StreetID source, StreetID target, Int height, Int offset = 0): Path
+        - dijkstra(VertexID vertex, (VertexID -> Boolean) terminationChecker, height: Int = 0): Path
+        .. wrapper methods for County ..
+        + getVertexByID(VertexID vId) : Vertex?
+        + getBaseByID(BaseStationID bId) : BaseStation?
+        + getStationByVertexID(VertexID vID): BaseStationID?
+        + getVertexByStationID(BaseStationID bID): VertexID?
+        + getStreetByID(StreetID sID): Street?
+    }
+    note left of Finder::dijkstra
+        height = 0 for ignoring restrictions
+    end note
+    Finder o-- County
+
+    class County {
+        - vertexMap: Map<VertexID, Vertex>
+        - streetMap: Map<StreetId, Street>
+        - baseStationMap: Map<BaseStationID, BaseStation>
+        - streetTypeMap: Map<StreetPrimaryType, List<Street>>
+        - vertexToStationMap: Map<VertexID, BaseStationID>
+        - stationToVertexMap: Map<BaseStationID, VertexID>
+        + County(List<Vertex> v, List<Street> s, List<BaseStation> b, Map<BaseStationID, VertexID> stationVertexMap)
+        + getVertexByID(VertexID vId) : Vertex?
+        + getBaseByID(BaseStationID bId) : BaseStation?
+        + getStationByVertexID(VertexID vID): BaseStationID?
+        + getVertexByStationID(BaseStationID bID): VertexID?
+        + getStreetByID(StreetID sID): Street?
+    }
+    County o-- .ids.VertexID
+    County o-- Vertex
+    County o-- .ids.BaseStationID
+    County o-- .baseStations.BaseStation
+    County o-- .ids.StreetID
+    County o-- Street
+    County -- StreetPrimaryType
+
+    class Vertex {
+        - id: VertexID
+        - connections: List<StreetId>
+        + Vertex(VertexID id, List<StreetID> connections): Vertex
+    }
+    Vertex o-- .ids.VertexID
+    Vertex o-- .ids.StreetID
+
+    enum StreetPrimaryType {
+        MAINSTREET,
+        SIDESTREET,
+        COUNTYROAD,
+    }
+
+    enum StreetSecondaryType {
+        ONEWAYSTREET,
+        TUNNEL,
+        NONE,
+    }
+
+    class Street {
+        - id: StreetID
+        - source: VertexID
+        - target: VertexID
+        - name: String
+        - weight: Int
+        - height: Int
+        - direction: StreetDirection
+        - primaryType: StreetPrimaryType
+        - secondaryType: StreetSecondaryType
+        - associatedEvent: EventID?
+        - blocked: Boolean = false
+        + Street(StreetID id, VertexID source, VertexID target, Int weight, String name, Int height, StreetPrimaryType pType, StreetSecondaryType sType)
+        + isAffectedByEvent(): Boolean
+        + isBlocked(): Boolean
+    }
+    Street -- StreetPrimaryType
+    Street -- StreetSecondaryType
+    Street *-- StreetDirection
+    Street o-- .ids.VertexID
+
+    enum StreetDirection {
+        SOURCE_TARGET,
+        TARGET_SOURCE,
+        BIDIRECTIONAL,
+    }
+
+    class Path {
+        - streets: List<Pair<Int, StreetID>>
+        - offset: Int
+        - length: Int
+        + Path(streets: List<Pair<Int, StreetID>>, offset: Int)
+        + getPosition(Int weight): Pair<Int, StreetID>
+        + advance(Int weight): Unit
+        + hasArrived(): Boolean
+    }
+    Path o-- .ids.StreetID
+    note left of Path::streets
+        pairs of weight (at time of dispatch) + street
+    end note
+    note left of Path::offset
+        from source of first street
+    end note
+    note left of Path::length
+        at time of creation
+    end note
+    note left of Path::getPosition
+        returns offset + street
+    end note
+}
+
+
+/' logging
+   ========================================================================= '/
+package logging {
+    class Logger {
+        - outputHandle: File = STDOUT
+        - separator: String = ":"
+        + Logger(File outputHandle, String separator = ":")
+        - log(String logType, String msg): Unit
+        + initInfo(String filename, Boolean valid): Unit
+        + simulationStart(): Unit
+        + simulationEnd(): Unit
+        + simulationTick(Int tick): Unit
+        + emergencyAssignment(EmergencyID e, BaseStationID b): Unit
+        + assetAllocation(VehicleID asset, EmergencyID e, Int ticksToArrive): Unit
+        + assetRequest(RequestID r, BaseStationID b, EmergencyID e): Unit
+        + assetReallocation(VehicleID asset, EmergencyID e): Unit
+        + requestFail(EmergencyID e): Unit
+        + assetArrival(VehicleID asset, VertexID destination): Unit
+        + emergencyStatusUpdate(EmergencyID eID, EmergencyState state): Unit
+        + eventTriggered(EventID e): Unit
+        + eventEnded(EventID e): Unit
+        + statistics(Statistics stat): Unit
+    }
+}
+
+
+/' EMC
+   ========================================================================= '/
+package emc {
+    class CoreSimulation {
+        - emc: EMC
+        - finder: Finder
+        - logger: Logger
+        - curTick: Int = 0
+        - maxTicks: Int
+        - emergencyPhase: EmergencyPhase
+        - planningPhase: PlanningPhase
+        - allocationPhase: AllocationPhase
+        - requestPhase: RequestPhase
+        - updatePhase: UpdatePhase
+        + CoreSimulation(String county, String assets, String scenario, Int maxTicks, String out)
+        + run(): Unit
+        - createSimulationObjects(Accumulator acc)
+        - parse(): Boolean
+    }
+    CoreSimulation o-- EMC
+    CoreSimulation o-- .mapping.Finder
+    CoreSimulation o-up- .logging.Logger
+    note right of CoreSimulation
+        owns EMC and Finder
+    end note
+
+    class EMC {
+        - emergencies: Map<Int, List<Emergency>>
+        - ongoingEmergencies: List<Emergency>
+        - openRequests: List<Request>
+        - events: Map<Int, List<Event>>
+        - ongoingEvents: List<Event>
+        - assignedStations: Map<EmergencyID, BaseStationID>
+        - emergencyToVehicleMap:Map<EmergencyID, List<VehicleID>>
+        - vehicleToEmergencyMap:Map< VehicleID, Emergency>
+        - vehicleIDToStationIDMap: Map<VehicleID, BaseStationID>
+        - vehicleMap: Map<VehicleID, Vehicle>
+        - statistics: Statistics
+        - requestCount: Int = 0
+        + EMC(Map<Int, List<Emergency>> emergencies, Map<Int, List<Event>> events,\n Map<VehicleID, StationID> vehicleToStation, Map<VehicleID, Vehicle> vehicleMap)
+        + newRequestID(): RequestID
+        + assignStation(BaseStationID bID, EmergencyID eID)
+        + getAssignedStation(EmergencyID emergency): BaseStationID
+        + getNewEvents(Int tick): List<Event>
+        + addOngoingEvent(Event e): Unit
+        + removeOngoingEvent(Event e): Unit
+        + getEmergencies(Int tick): List<Emergency>
+        + getVehiclesForEmergency(EmergencyID e): List<VehicleID>
+        + getEmergencyFromVehicle(VehicleID v): Emergency?
+        + getVehicleFromID(VehicleID v): Vehicle?
+    }
+    EMC o-- Statistics
+    EMC o-- .emergencies.Emergency
+    EMC o-- .emergencies.Request
+    EMC o-- .events.Event
+    EMC o-- .ids.EmergencyID
+    EMC o-- .ids.BaseStationID
+    EMC o-- .ids.VehicleID
+    note left of EMC::openRequests
+        sorted by design
+    end note
+
+    class Statistics {
+        - receivedEmergencies: Int
+        - resolvedEmergencies: Int
+        - failedEmergencies: Int
+        - ongoingEmergencies: Int
+        - reroutedAssets: Int
+        + Statistics()
+    }
+}
+
+
+/' phases
+   ========================================================================= '/
+package simulation {
+abstract class SimulationPhase {
+        - emc: EMC
+        - logger: Logger
+        - finder: Finder
+        + SimulationPhase(emc: EMC, logger: Logger, finder: Finder)
+        + weightToTick(Int weight): Int
+        + tickToWeight(Int tick): Int
+    }
+    SimulationPhase o-- .emc.EMC
+    SimulationPhase o-- .logging.Logger
+    SimulationPhase o-- .mapping.Finder
+
+    SimulationPhase <|-- EmergencyPhase
+    SimulationPhase <|-- PlanningPhase
+    SimulationPhase <|-- AllocationPhase
+    SimulationPhase <|-- RequestPhase
+    SimulationPhase <|-- UpdatePhase
+
+    class EmergencyPhase {
+        + assignEmergencies(List<Emergency> emergencies)
+        + EmergencyPhase()
+    }
+
+    class PlanningPhase {
+        + sortOngoingEmergencies()
+        + PlanningPhase()
+    }
+
+    class AllocationPhase {
+        + allocateAssets(Int curTick): List<VehicleID>
+        - allocateFireStationVehicles(FireStation s, Emergency e): List<FireRequest>
+        - allocatePoliceStationVehicles(PoliceStation s, Emergency e): List<PoliceRequest>
+        - allocateMedicalStationVehicles(MedicalStation s, Emergency e): List<MedicalRequest>
+        + AllocationPhase()
+    }
+    note left of AllocationPhase::allocateAssets
+        return list of newly allocated vehicles
+    end note
+
+    class RequestPhase {
+        + processRequests(): List<VehicleID>
+        + RequestPhase()
+    }
+
+    class UpdatePhase {
+        - observers: List<VehicleID>
+        + update(Int curTick, newObservers: List<VehicleID>): Unit
+        - addObserver(VehicleID vID): Unit
+        - removeObserver(VehicleID vID): Unit
+        - calculateWaitingTime(Vehicle v): Unit
+        - updateVehicles(Int curTick): Unit
+        - updateEmergencies(Int curTick): Unit
+        - updateEvents(Int curTick): Unit
+        + UpdatePhase()
+    }
+    UpdatePhase o-- .ids.VehicleID
+}
+
+
+/' vehicles
+   ========================================================================= '/
+package vehicles {
+    abstract class Vehicle {
+        - id: VehicleID
+        - staffCapacity: Int { 0 < staffCapacity <= 12 }
+        - height: Int { 1 <= height <= 5 }
+        ' TODO: was I allowed to remove this?
+        ' - waitingCounter: Int
+        - state: VehicleState
+        - path : Path?
+        + Vehicle(id: VehicleID, staffCapacity: Int, height: Int)
+        + isAvailable(): Boolean
+    }
+    Vehicle o-- .ids.VehicleID
+    Vehicle *-- VehicleState
+    Vehicle o-- .mapping.Path
+
+    note left of Vehicle::waitingCounter
+        ticks until available again
+    end note
+    Vehicle <|-- PoliceVehicle
+    Vehicle <|-- FireVehicle
+    Vehicle <|-- MedicalVehicle
+
+    enum VehicleState {
+        DISPATCHED,
+        WAITING,
+        RETURNING,
+        AVAILABLE,
+        IN_PREPARATION,
+        UNAVAILABLE,
+    }
+
+    class PoliceVehicle {
+        - type: PoliceVehicleType
+        - dogCapacity: Int { 1 only for K9_CAR }
+        - totalCriminalCapacity: Int
+        - currentCriminalCapacity: Int
+        + hasCriminal(): Boolean
+        + PoliceVehicle(id: VehicleID, staffCapacity: Int, height: Int, type: PoliceVehicleType, totalCriminalCapacity: Int)
+    }
+    PoliceVehicle o-- PoliceVehicleType
+
+    class FireVehicle {
+        - currentWaterCapacity : Int
+        - totalWaterCapacity : Int
+        - type: FireVehicleType
+        - ladderLength: Int { 0 OR 30 <= ladderLength <= 70 }
+        + needsRefilling(): Boolean
+        + FireVehicle(id: VehicleID, staffCapacity: Int, height: Int, totalWaterCapacity: Int, type: FireVehicleType, ladderLength: Int = 0)
+    }
+    FireVehicle o-- FireVehicleType
+
+    class MedicalVehicle {
+        - type: MedicalVehicleType
+        - doctorCapacity: Int { 1, only for EMERGENCY_DOCTOR_CAR }
+        - patient: Boolean
+        + hasPatient(): Boolean
+        + setPatient()
+        + unsetPatient()
+        + MedicalVehicle(id: VehicleID, staffCapacity: Int, height: Int, type: MedicalVehicleType)
+    }
+    MedicalVehicle o-- MedicalVehicleType
+
+    enum PoliceVehicleType {
+        CAR,
+        K9_CAR,
+        MOTORCYCLE,
+    }
+
+    enum FireVehicleType {
+        TRUCK_WATER,
+        TRUCK_TECHNICAL,
+        TRUCK_LADDER,
+        FIREFIGHTER_TRANSPORTER,
+    }
+
+    enum MedicalVehicleType {
+        AMBULANCE,
+        EMERGENCY_DOCTOR_CAR,
+    }
+}
+
+
+/' base stations
+   ========================================================================= '/
+package baseStations {
+    abstract class BaseStation {
+        - id: BaseStationID
+        - staff: Int { staff > 0 }
+        - vehicles: List<VehicleID>
+        + getAvailableStaff(): Int
+        + canStaffVehicle(Vehicle v): Boolean
+        + addVehicleId(VehicleID v)
+        + BaseStation(id: BaseStationID, staff: Int, vehicles: List<Vehicle>)
+    }
+    note right of BaseStation::vehicles
+        sorted on parsing
+    end note
+    BaseStation o-- .ids.BaseStationID
+    BaseStation o-- .ids.VehicleID
+    BaseStation o-- .vehicles.Vehicle
+
+    class PoliceStation {
+        - dogs { dogs >= 0 }
+        + getAvailableDogs(): Int
+        + PoliceStation(id: BaseStationID, staff: Int, vehicles: List<Vehicle>, dogs: Int)
+    }
+    PoliceStation o-- PoliceVehicle
+
+    class FireStation {
+        + FireStation(id: BaseStationID, staff: Int, vehicles: List<Vehicle>)
+    }
+    FireStation o-- FireVehicle
+
+    class MedicalStation {
+        - doctors { doctors >= 0 }
+        + getAvailableDoctors(): Int
+        + MedicalStation(id: BaseStationID, staff: Int, vehicles: List<Vehicle>, doctors: Int)
+    }
+    MedicalStation o-- MedicalVehicle
+
+    BaseStation <|-- PoliceStation
+    BaseStation <|-- FireStation
+    BaseStation <|-- MedicalStation
+}
+
+
+/' requirements
+   ========================================================================= '/
+package requirements {
+    class Requirement {
+        - police: List<PoliceVehicleType>
+        - fire: List<FireVehicleType>
+        - medical: List<MedicalVehicleType>
+        - ladderLength: Int
+        - criminals: Int
+        - patients: Int
+        - water: Int
+        + isFulfilled(): Bool
+        + Requirement(police: List<PoliceVehicleType>, fire: List<FireVehicleType>, medical: List<MedicalVehicleType>, ladderLength: Int, criminals: Int, patients: Int, water: Int)
+    }
+    Requirement o-- PoliceVehicleType
+    Requirement o-- FireVehicleType
+    Requirement o-- MedicalVehicleType
+
+    interface RequirementFactory {
+        {abstract} + createLowSeverityRequirement(): Requirement
+        {abstract} + createMediumSeverityRequirement(): Requirement
+        {abstract} + createHighSeverityRequirement(): Requirement
+    }
+    note left of RequirementFactory
+        factories are static classes
+    end note
+
+    RequirementFactory <|.. FireRequirementFactory
+    RequirementFactory <|.. AccidentRequirementFactory
+    RequirementFactory <|.. CrimeRequirementFactory
+    RequirementFactory <|.. MedicalRequirementFactory
+
+    class FireRequirementFactory {
+        + createLowSeverityRequirement(): Requirement
+        + createMediumSeverityRequirement(): Requirement
+        + createHighSeverityRequirement(): Requirement
+        + FireRequirementFactory()
+    }
+
+    class AccidentRequirementFactory {
+        + createLowSeverityRequirement(): Requirement
+        + createMediumSeverityRequirement(): Requirement
+        + createHighSeverityRequirement(): Requirement
+        + AccidentRequirementFactory()
+    }
+
+    class CrimeRequirementFactory {
+        + createLowSeverityRequirement(): Requirement
+        + createMediumSeverityRequirement(): Requirement
+        + createHighSeverityRequirement(): Requirement
+        + CrimeRequirementFactory()
+    }
+
+    class MedicalRequirementFactory {
+        + createLowSeverityRequirement(): Requirement
+        + createMediumSeverityRequirement(): Requirement
+        + createHighSeverityRequirement(): Requirement
+        + MedicalRequirementFactory()
+    }
+}
+
+
+/' emergencies
+   ========================================================================= '/
+package emergencies {
+    class Emergency {
+        - id: EmergencyID
+        - street: StreetID
+        - startTick: Int { startTick > 0 }
+        - handleTime: Int { handleTime > 0 }
+        - maxDuration: Int { maxDuration > handleTime }
+        - severity: EmergencySeverity
+        - type: EmergencyType
+        - requirement: Requirement
+        - state: EmergencyState
+        + getTicksLeft(Int curTick): Int
+        + getRuntime(Int curTick): Int
+        + getTicksLeftForArrival(curTick): Int
+        + Emergency(id: EmergencyID, street: StreetID, startTick: Int, handleTime: Int, maxDuration: Int, severity: EmergencySeverity, type: EmergencyType, requirement: Requirement)
+    }
+    Emergency o-- .ids.EmergencyID
+    Emergency o-- .ids.StreetID
+    Emergency *-- EmergencySeverity
+    Emergency *-- EmergencyType
+    Emergency *-- Requirement
+    Emergency *-- EmergencyState
+
+    note left of Emergency::getTicksLeft
+        ticks left to solve emergency
+            `maxDuration - (curTick - startTick)`
+    end note
+    note left of Emergency::getRuntime
+        `curTick - startTick`
+    end note
+    note left of Emergency::getTicksLeftForArrival
+        `getTicksLeft() - handleTime`
+    end note
+
+    enum EmergencyState {
+        UNASSIGNED,
+        ONGOING,
+        BEING_RESOLVED,
+        SUCCESS,
+        FAILED,
+    }
+
+    enum EmergencyType {
+        FIRE,
+        ACCIDENT,
+        CRIME,
+        MEDICAL,
+    }
+
+    enum EmergencySeverity {
+        LOW,
+        MEDIUM,
+        HIGH,
+    }
+
+    ' requests
+    abstract class Request {
+        - id: Int { id > 0 }
+        - sender: BaseStationID
+        + Request(id: Int, sender: BaseStationID)
+    }
+    Request o-- .ids.BaseStationID
+
+    Request <|-- PoliceRequest
+    Request <|-- FireRequest
+    Request <|-- MedicalRequest
+
+    class PoliceRequest {
+        - assets: List<PoliceVehicleType>
+        - criminalCapacity: Int
+        + PoliceRequest(id: Int, sender: BaseStationID, assets: List<PoliceVehicleType>, criminalCapacity: Int)
+    }
+    PoliceRequest o-- .vehicles.PoliceVehicleType
+
+    class FireRequest {
+        - assets: List<FireVehicleType>
+        - minLadderLength: Int
+        - waterCapacity: Int
+        + FireRequest(id: Int, sender: BaseStationID, assets: List<FireVehicleType>, minLadderLength: Int, waterCapacity: Int)
+    }
+    FireRequest o-- .vehicles.FireVehicleType
+
+    class MedicalRequest {
+        - assets: List<MedicalVehicleType>
+        - patientCapacity: Int
+        + MedicalRequest(id: Int, sender: BaseStationID, assets: List<MedicalVehicleType>, patientCapacity: Int)
+    }
+    MedicalRequest o-- .vehicles.MedicalVehicleType
+}
+
+
+/' parsing
+   ========================================================================= '/
+package parsing {
+    class CountyParser {
+        - countyId: String
+        - vertices: List<String>
+        - edges: List<Map<String, String>>
+        + parse(String filepath)
+        - checkId(String id): Boolean
+        - checkAttributes(String attr): Boolean
+        + getVertex(): String
+        + getEdge(): Map<String, String>
+        + getCountyId(): String
+    }
+    CountyParser ..|> Parser
+
+    class JsonParser {
+        - arrayMap: Map<String, Array<JsonObject>>
+        - currentKey: String?
+        - indexMap: Map<String, Int>
+        + parse(String filepath): Boolean
+        + loadNext(String arrayNameString)
+        + isValuePresent(String valueKey): Boolean
+        + getValue(String valueKey): Unit
+        + getCurrentIndex(): Int
+        - fillMaps(): Unit
+    }
+    JsonParser ..|> Parser
+
+    interface Validator {
+        + validateData(Accumulator acc): Accumulator
+    }
+    Validator -- Accumulator
+
+    interface Parser {
+        + parse(String path)
+    }
+
+    class VehicleValidator {
+        - parser: JsonParser
+        + validateData(Accumulator sb): Accumulator
+        - setCurrentVehicleEmpty(): Unit
+        - validateIdCorrectAndUnique(): Boolean
+        - validateBaseExists(): Boolean
+        - isVehiclePresent(): Boolean
+        - validateVehicleType(): Boolean
+        - validateStaffCapacity(): Boolean
+        - validateVehicleHeight(): Boolean
+        - validateLadderLength(): Boolean
+        - validateSpecialStaff(): Boolean
+        - validateCriminalCapacity(): Boolean
+        - validateWaterCapacity(): Boolean
+    }
+    VehicleValidator -- JsonParser
+
+    class StationValidator {
+        - parser: JsonParser
+        - currentStation: Map<String, String>?
+        - stationIds: MutableSet<Int>
+        + validateData(Accumulator sb): Accumulator
+        - setCurrentStationEmpty(): Unit
+        - validateId(): Boolean
+        - validateType(): Boolean
+        - validateStaff(): Boolean
+        - validateDoctors(): Boolean
+        - validateDogs(): Boolean
+        - validateLocation(): Boolean
+    }
+    StationValidator -- JsonParser
+
+        class CountyValidator {
+            - parser: CountyParser
+            - sideStreetPresent: Boolean
+            - vertices: Map<String, List<String>>
+            - villages: Map<String, Map<String, String>>
+            + validateData(Accumulator sb): Accumulator
+            - validateVertexIdUniquenessAndValue(String id): Boolean
+            - validateStreetVerticesExistAndAreUnique()
+            - checkSideStreetFulfilled(): Boolean
+            - checkStreetPrimTypeRelations(): Boolean
+            - idIsCountyId(String idString): Boolean
+            - validateHeight(): Boolean
+            - validateWeight(): Boolean
+            - isVertexPresent(String sourceId): Boolean
+            - doesRoadExistInVillage(String roadId, String villageId): Boolean
+            - verticesAreInterconnected(): Boolean
+            - noDoubleEdging(): Boolean
+            - eachVillageHasMainStreet(): Boolean
+            - areVerticesUniqueToVillage(): Boolean
+        }
+
+    /'
+    1. All IDs of vertices are unique and the smallest possible ID is 0.10
+    2. Each vertex is connected to at least one other vertex.11
+    3. The road name is unique within a village.12
+    4. There are no edges from one vertex to itself.13
+    5. There is at most one edge between two vertices.14
+    6. All edges connect two existing vertices.15
+    7. All edges connected to the same vertex belong to the same village or are a countyRoad.16
+    8. Each village has at least one road with type mainStreet.17
+    9. There is at least one sideStreet on the County.18
+    10. The weight of a road must be greater than 0.19
+    11. The height of a road is at least 1.20
+    12. The height of a tunnel is at most 3.
+    '/
+
+    class EmergencyValidator {
+        - parser: JsonParser
+        - currentEmergency: Map<String, String>?
+        - emergencyIds: MutableSet<Int>
+        + validateData(Accumulator sb): Accumulator
+        - setCurrentEmergencyEmpty()
+        - validateId(): Boolean
+        - validateTick(): Boolean
+        - validateEmergencyType()
+        - validateSeverity()
+        - validateHandleTimeAndMaxDuration()
+        - validateRoadAndVillage()
+    }
+    EmergencyValidator -- JsonParser
+
+    class EventValidator {
+        - parser: JsonParser
+        - currentEvent: Map<String, String>?
+        - eventIds: MutableSet<Int>
+        + validateData(Accumulator sb): Accumulator
+        - setCurrentEventEmpty()
+        - validateId(): Boolean
+        - validateType(): Boolean
+        - validateTick(): Boolean
+        - validateDuration(): Boolean
+        - validateRoadTypes(): Boolean
+        - validateFactor(): Boolean
+        - validateOneWayStreet(): Boolean
+        - validateSourceTarget(): Boolean
+        - validateVehicleId(): Boolean
+    }
+    EventValidator -- JsonParser
+
+    Validator <|.. VehicleValidator
+    Validator <|.. StationValidator
+    Validator <|.. CountyValidator
+    Validator <|.. EmergencyValidator
+    Validator <|.. EventValidator
+
+    CountyParser -- CountyValidator
+
+    class Accumulator {
+        - vertexMap: Map<VertexID, List<StreetID>>
+        - streetMap: Map<StreetID, Street>
+        - villageMap: Map<String, Map<String, StreetID>>
+        - stationMap: Map<BaseStationID, Station>
+        /' station only knows vehicleId not vehicle '/
+        - vehicleMap: Map<VehicleID, Vehicle>
+        - emergencyTickMap: Map<Int, List<Emergency>>
+        - eventTickMap: Map<Int, List<Event>>
+        + addVertex(Float vertexIdFloat)
+        + addStreet(Map<String, String> streetTokenMap)
+        + validateVertex(Int): Boolean
+        + addStation(Map<String, String>)
+        + checkBase(Int, Int, String): Boolean
+        + checkSpecialStaffPresent(baseIdInt): Boolean
+        + addVehicle(Map<String, String>)
+        + villageWithRoadExists(villageIdString, roadIdString): Boolean
+        + addEmergency(Map<String, String>)
+        + vehicleWithIdExists(Int): Boolean
+        + streetWithSourceTargetExists(Int, Int): Boolean
+        + addEvent(Map<String, List<String>>)
+        + getEmergencyTickMap(): Map<Int, List<Emergency>>
+        + getEventTickMap(): Map<Int, List<Emergency>>
+        + getVehicleMap(): Map<VehicleID, Vehicle>
+        + getVehicleIdToStationId(): Map<VehicleID, BaseStationID>
+        + getBaseStationIDToVertexID(): Map<BaseStationID, VertexID>
+        + getCounty(): County
+    }
+    Accumulator -- Vertex
+    Accumulator -- Street
+    Accumulator -- BaseStation
+    Accumulator -- Emergency
+    Accumulator -- Event
+    Accumulator -- County
+
+    Accumulator o-- VertexID
+    Accumulator o-- StreetID
+    Accumulator o-- BaseStationID
+    Accumulator o-- VehicleID
+}
+
+class Main {
+    main(Array<String> argv)
+}
+Main -- CoreSimulation
+
+@enduml

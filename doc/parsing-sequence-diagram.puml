@@ -1,0 +1,773 @@
+@startuml
+
+autoactivate on
+autonumber
+
+/'Define participants'/
+actor "m : Main " as m
+participant "cs : CoreSimulation" as cs
+participant "l : Logger" as l
+
+participant "cp : CountyParser" as cp
+participant "cp_v : vertices" as cp_v
+participant "cp_e : edges" as cp_e
+participant "cp_f : file" as cp_f
+participant "cp_f_c : charsets" as cp_f_c
+participant "cv : CountyValidator" as cv
+
+participant "ap : AssetParser" as ap
+participant "sv : StationValidator" as sv
+
+participant "vv : VehicleValidator" as vv
+
+participant "sp : ScenarioParser" as sp
+participant "emv : EmergencyValidator" as emv
+participant "emv_ce : currentEmergency" as emv_ce
+participant "emv_ei : emergencyIds" as emv_ei
+participant "evv : EventValidator" as evv
+
+participant "acc : Accumulator" as acc
+participant "cou : County" as cou
+participant "f : Finder" as f
+participant "emc : EMC" as emc
+
+participant "rf_a : AccidentRequirementFactory" as rf_a
+participant "rf_c : CrimeRequirementFactory" as rf_c
+participant "rf_m : MedicalRequirementFactory" as rf_m
+participant "rf_f : FireRequirementFactory" as rf_f
+
+
+m -> m: main(argList)
+note left of m: Normal notes are yellow
+note left of m #LightBlue: omissions of private \nvariable calls are blue
+note left of m #Pink: omissions with algorithm details \nin the Accumulator are pink
+m -> cs **: coreSimulation(county, assets, scenario, ticks, out)
+activate cs
+note left#LightBlue: coreSimulation omits calls to\n private variables partially
+note left of m: Most Constructors don't show \nall their private object creation
+/'create logger'/
+cs -> l**: Logger(out)
+activate l
+l --> cs: l
+deactivate l
+note left#LightBlue: Logger object omits calls to\n private variables
+
+/'start parsing'/
+cs -> cs: parse()
+
+/'invoke a DOT Parser for CountyFile'/
+cs -> cp **: countyParser()
+activate cp
+cp -> cp_e**: listOf()
+activate cp_e
+cp_e --> cp: cp_e
+deactivate cp_e
+cp -> cp_v**: mutableSetOf()
+activate cp_v
+cp_v --> cp: cp_v
+deactivate cp_v
+cp --> cs: cp
+deactivate cp
+cs -> cp: parse(county)
+cp -> cp_f**: File(county)
+activate cp_f
+cp_f --> cp: cp_f
+deactivate cp_f
+cp -> cp_f: readText(Charsets.UTF_8)
+cp_f -> cp_f_c**: UTF_8
+activate cp_f_c
+cp_f_c --> cp_f: charset
+deactivate cp_f_c
+cp_f --> cp: textString
+cp -> cp: checkId(countyId)
+cp --> cp: true
+loop for vertices
+cp -> cp: checkId(vertex)
+cp --> cp: true
+cp -> cp_v: contains(vertex)
+cp_v --> cp: false
+cp -> cp_v: add(vertex)
+cp_v --> cp:
+end
+loop for edges
+cp -> cp: checkId(source)
+cp --> cp: true
+cp -> cp_v: contains(source)
+cp_v --> cp: true
+cp -> cp: checkId(target)
+cp --> cp: true
+cp -> cp_v: contains(target)
+cp_v --> cp: true
+cp -> cp: checkAttributes(List<String>)
+cp --> cp: true
+note left#LightBlue: omitted private variables partially\n(valueMap filling)
+cp -> cp_e: add(valueMap)
+cp_e --> cp:
+end
+cp --> cs: true
+/'
+    class CountyParser {
+        -countyId: String
+        -vertices: List<Int>
+        -edges: List<Map<String, String>>
+        +parse(String filepath): Boolean
+        -checkId(String id): Boolean
+        -checkAttributes(String attr): Boolean
+        +getVertex(): Int?
+        +getEdge(): Map<String, String>?
+        +getCountyId(): String
+    }
+'/
+
+/'invoke a JSON parser for the AssetFile'/
+cs -> ap**: JsonParser()
+activate ap
+ap --> cs: ap
+deactivate ap
+note left#LightBlue: AssetParser object omits calls to\n private variables
+cs -> ap: parse(assets)
+ap -> ap: fillMaps()
+ap --> ap:
+ap -> ap: checkCorrectFormat()
+ap -> ap: checkBaseFormat()
+ap --> ap: true
+ap -> ap: checkVehicleFormat()
+ap --> ap: true
+ap --> ap: true
+ap --> cs: true
+
+/'invoke a JSON parser for the ScenarioFile'/
+cs -> sp**: JsonParser()
+activate sp
+sp --> cs: sp
+deactivate sp
+note left#LightBlue: ScenarioParser object omits calls to\n private variables
+cs -> sp: parse(scenario)
+sp -> sp: fillMaps()
+sp -> sp: checkCorrectFormat()
+sp -> sp: checkEmergencyFormat()
+sp --> sp: true
+sp -> sp: checkEventFormat()
+sp --> sp: true
+sp --> sp: true
+sp --> cs: true
+/'
+    class JsonParser {
+        -arrayMap: Map<String, Array<JsonObject>>
+        -currentKey: String?
+        -indexMap: Map<String, Int>
+        +parse(String filepath): Boolean
+        +loadNext(String arrayNameString)
+        +isValuePresent(String valueKey): Boolean
+        +getValue(String valueKey): Unit
+        +getCurrentIndex(): Int
+        -fillMaps()
+    }
+'/
+
+
+/'invoke a Accumulator'/
+cs -> acc**: Accumulator()
+activate acc
+acc --> cs: acc
+deactivate acc
+note left#LightBlue: Accumulator object omits calls to\n private variables
+
+
+/'Validate CountyFile'/
+/'- run validate function'/
+cs -> cv**: CountyValidator(cp)
+note left#LightBlue: CountyValidator object omits calls to\n private variables
+cs -> cv: validateData(acc)
+cv -> cp: getCountyId()
+cp --> cv: countyIdString
+loop for vertices
+cv -> cp: getVertex()
+cp --> cv: vertexIdString
+cv -> cv: validateVertexIdUniquenessAndValue(vertexIdString)
+note left: 1. All IDs of vertices are unique and the smallest possible ID is 0.
+cv -> cv: isVertexPresent(vertexIdString)
+cv --> cv: false
+cv --> cv: true
+cv -> acc: addVertex(vertexIdString)
+acc -> vertexID**: vertexID(vertexIdString)
+activate vertexID
+vertexID --> acc: vertexID
+deactivate vertexID
+note left #Pink: add vertexID as new key to vertexMap with empty StreetID list
+acc --> cv:
+end
+loop for edges
+cv -> cp: getEdge()
+cp --> cv: Map<key, valueString>
+cv -> cv: validateStreetVerticesExistAndAreUnique()
+note left: 6. All edges connect two existing vertices.\n4. There are no edges from one vertex to itself.
+cv -> cv: isVertexPresent(sourceIdString)
+cv --> cv: true
+cv -> cv: isVertexPresent(targetIdString)
+cv --> cv: true
+cv --> cv: true
+cv -> cv: validateWeight()
+note left: 10. The weight of a road must be greater than 0.
+cv --> cv: true
+cv -> cv: checkStreetPrimTypeRelations()
+alt PrimaryType == countyRoad
+cv -> cv: idIsCountyId(idString)
+cv --> cv: true
+else PrimareType == sideStreet OR mainStreet
+cv -> cv: idIsCountyId(idString)
+note left: 13. No village name is equal to a county name.
+cv --> cv: false
+end
+cv --> cv: true
+cv -> cv: validateHeight()
+note left: 11. The height of a road is at least 1.\n12. The height of a tunnel is at most 3.
+cv --> cv: true
+cv -> cv: doesRoadExistInVillage(roadIdString, villageIdString)
+note left: 3. The road name is unique within a village.
+cv --> cv: false
+cv -> acc: addStreet(Map<key, valueString>)
+acc -> streetID**: StreetID(source, target)
+activate streetID
+streetID --> acc: streetID
+deactivate streetID
+acc -> sourceID**: VertexID(source)
+activate sourceID
+sourceID --> acc: sourceID
+deactivate sourceID
+acc -> targetID**: VertexID(target)
+activate targetID
+targetID --> acc: targetID
+deactivate targetID
+acc -> primaryType**: StreetPrimaryType.???
+activate primaryType
+primaryType --> acc: primaryType
+deactivate primaryType
+note left #Pink: look up which street type and convert to enum
+acc -> secondaryType**: StreetSecondaryType.???
+activate secondaryType
+secondaryType --> acc: secondaryType
+deactivate secondaryType
+acc -> street**: Street(streetID, sourceID, targetID, weight, name, height, primaryType, secondaryType)
+activate street
+street --> acc: street
+deactivate street
+note left #Pink: add streetID as new key to streetMap with street as value\nadd streetID to source and target Lists in vertexMap \nadd streetID to village map List for corresponding village key
+acc --> cv:
+end
+cv -> cv: checkSideStreetFulfilled()
+note left: 9. There is at least one sideStreet on the map.
+cv --> cv: true
+cv -> cv: areVerticesUniqueToVillage()
+note left: 7. All edges connected to the same vertex belong to the same village or are a countyRoad.
+cv --> cv: true
+cv -> cv: verticesAreInterconnected()
+note left: 2. Each vertex is connected to at least one other vertex.
+cv --> cv: true
+cv -> cv: noDoubleEdging()
+note left: 5. There is at most one edge between two vertices.
+cv --> cv: true
+cv -> cv: eachVillageHasMainStreet()
+note left: 8. Each village has at least one road with type mainStreet.
+cv --> cv: true
+/'
+'/
+
+cv --> cs: acc
+cs -> l: initInfo(county, true)
+l --> cs:
+
+/'Validate AssetFile'/
+/'  -parser: JsonParser
+            +validateData(Accumulator sb): Accumulator
+            -validateIdAndUniqueness()
+            -validateId()
+            -validateType()
+            -validateStaff()
+            -validateDoctors()
+            -validateDogs()
+            -validateLocation()
+            -createStation(): BaseStation'/
+/'- run validate funciton'/
+
+cs -> sv**: StationValidator(ap)
+
+cs -> sv: ValidateData(acc)
+loop for Stations
+sv -> sv: setCurrentStationEmpty()
+sv --> sv
+note left #LightBlue: We assume we already have list of StationIds and an empty BaseStation object
+sv -> ap: loadNext("Station")
+ap -->sv
+sv -> sv : validateId()
+sv -> ap: getValue("ID")
+ap --> sv: baseId
+sv --> sv: true
+sv -> sv : validateStaff()
+sv -> ap: getValue("staff")
+ap --> sv: staff
+sv --> sv: true
+sv -> sv : validateType()
+sv -> ap: getValue("type")
+ap --> sv: baseType
+sv --> sv: true
+sv -> sv : validateDogs()
+alt type == POLICE_STATION
+sv -> ap: getValue("dogs")
+ap --> sv: dogs
+else
+sv -> ap: getValue("dogs")
+ ap -->sv :null
+end
+sv --> sv:true
+sv -> sv: validateDoctors()
+alt type == HOSPITAL
+sv -> ap: getValue("doctors")
+ap --> sv: doctors
+else
+sv -> ap: getValue("doctors")
+ap --> sv: null
+end
+sv --> sv: true
+sv -> sv: validateLocation()
+sv -> ap: getValue("location")
+ap --> sv: vertexIdString
+sv -> acc : validateVertex(vertexIdString)
+acc -> vertexIDget**: VertexID(vertexIdString)
+activate vertexIDget
+vertexIDget --> acc: vertexIDget
+deactivate vertexIDget
+note left #Pink: check that vertex exists in vertexMap
+acc --> sv: true
+sv -->sv : true
+sv -> acc: addStation(currentStation)
+acc -> stationID**: StationID(baseId)
+activate stationID
+stationID --> acc: stationID
+deactivate stationID
+acc -> station**: FireStation OR PoliceStation OR MedicalStation constructor
+activate station
+station --> acc: station
+deactivate station
+note left #Pink: determine correct station constructor and call with corresponding args. \ncreate station \nadd station to stationMap with key stationID
+acc --> sv
+
+end
+
+sv --> cs: acc
+/'- run validate function'/
+
+cs -> vv**: VehicleValidator(ap)
+
+
+cs -> vv: ValidateData(acc)
+
+
+loop for Vehicles
+vv -> vv: setCurrentVehicleEmpty()
+vv --> vv
+vv -> ap : loadNext("Vehicle")
+ap --> vv
+vv -> vv: validateIdCorrectAndUnique()
+vv -> ap: getValue("id")
+ap --> vv: vehicleIdInt
+vv -> vv: isVehiclePresent()
+vv --> vv: false
+vv --> vv: true
+vv -> vv: validateVehicleType()
+vv -> ap: getValue("vehicleType")
+ap --> vv: vehicleTypeString
+vv --> vv: true
+vv -> vv: validateStaffCapacity()
+vv -> ap: getValue("staffCapacity")
+ap --> vv: staffCapInt
+vv --> vv: true
+vv -> vv: validateBaseExists()
+vv -> ap: getValue("baseId")
+ap --> vv: baseIdInt
+vv -> acc: checkBase(baseIdInt, staffCapInt, vehicleTypeString)
+acc -> baseIDcheck**: BaseID(baseIdInt)
+activate baseIDcheck
+baseIDcheck --> acc: baseIDcheck
+deactivate baseIDcheck
+note left #Pink: look up base in baseMap \ncheck that staffCapInt ≤ staff \ncheck that the station class is correct for corresponding vehicleTypeString
+acc --> vv: true
+vv --> vv: true
+
+vv -> vv: validateVehicleHeight()
+vv -> ap: getValue("vehicleHeight")
+ap --> vv:
+vv --> vv: true
+
+vv-> vv: validateSpecialStaff()
+alt type == K9_POLICE_CAR OR EMERGENCY_DOCTOR_CAR
+vv -> acc: checkSpecialStaffPresent(baseIdInt)
+acc -> baseIDSpSt**: BaseID(baseIdInt)
+activate baseIDSpSt
+baseIDSpSt --> acc: baseIDSpSt
+deactivate baseIDSpSt
+note left #Pink: look up base in baseMap \ncheck that doctors or k9s are present
+acc --> vv: true
+end
+vv--> vv: true
+
+vv-> vv: validateCriminalCapacity()
+alt type == POLICE_CAR
+vv -> ap: getValue("criminalCapacity")
+ap --> vv: criminalCapInt
+else else
+vv -> ap: isValuePresent("criminalCapacity")
+ap --> vv: false
+end
+vv -->vv:true
+
+vv-> vv: validateWaterCapacity()
+alt type == FIRE_TRUCK_WATER
+vv -> ap: getValue("waterCapacity")
+ap --> vv: waterCapInt
+else else
+vv -> ap: isValuePresent("waterCapacity")
+ap --> vv: false
+end
+vv -->vv:true
+
+vv-> vv: validateLadderLength()
+alt type == FIRE_TRUCK_LADDER
+vv -> ap: getValue("ladderLength")
+ap --> vv: ladderLenInt
+else else
+vv -> ap: isValuePresent("ladderLength")
+ap --> vv: false
+end
+vv -->vv:true
+
+vv -> acc: addVehicle(currentVehicle)
+acc -> vehicleID**: VehicleID(idInt)
+activate vehicleID
+vehicleID --> acc: vehicleID
+deactivate vehicleID
+acc -> vehicleState**: VehicleState.AVAILABLE
+activate vehicleState
+vehicleState --> acc: vehicleState
+deactivate vehicleState
+acc -> vehicleType**: PoliceVehicleType.??? OR FireVehicleType.??? OR MedicalVehicleType.???
+activate vehicleType
+vehicleType --> acc: vehicleType
+deactivate vehicleType
+acc -> vehicle**: PoliceVehicle OR FireVehicle OR MedicalVehicle
+activate vehicle
+vehicle --> acc: vehicle
+deactivate vehicle
+note left #Pink: determine correct vehicle type \ndetermine correct vehicle constructor based on type \ncreate vehicle \nadd vehicle to vehicleMap with key vehicleID
+acc -->vv
+end
+vv --> cs: acc
+cs -> l: initInfo(assets, true)
+l --> cs:
+/'Validate ScenarioFile'/
+/'- run validate function'/
+cs -> emv**: EmergencyValidator(sp)
+activate emv
+emv -> emv_ei**: mutableSetOf()
+emv -> emv_ce**: mapOf()
+deactivate emv
+
+cs -> emv: ValidateData(acc)
+loop for emergencies
+emv -> emv: setCurrentEmergencyEmpty()
+emv -> emv_ce: putAll(setOf(\n"id" to Null, \n"tick" to Null, \n"emergencyType" to Null, \n"severity" to Null, \n"handleTime" to Null, "maxDuration" to Null, \n"roadName" to Null, \n"village" to Null\n))
+emv_ce --> emv
+emv -> sp: loadNext("Emergency")
+sp --> emv:
+emv --> emv:
+emv -> emv: validateId()
+emv -> sp: getValue("id")
+sp --> emv: idInteger
+emv -> emv_ei: contains(idInteger)
+emv_ei --> emv: false
+emv -> emv_ei: add(idInteger)
+emv_ei --> emv:
+emv -> emv_ce: put("id", idInteger)
+emv_ce --> emv
+emv --> emv: true
+emv -> emv: validateTick()
+emv -> sp: getValue("tick")
+sp --> emv: tickInteger
+emv -> emv_ce: put("tick", tickInteger)
+emv_ce --> emv
+emv --> emv: true
+emv -> emv: validateEmergencyType()
+emv -> sp: getValue("emergencyType")
+sp --> emv: typeString
+emv -> emv_ce: put("emergencyType", typeString)
+emv_ce --> emv
+emv --> emv: true
+emv -> emv: validateSeverity()
+emv -> sp: getValue("severity")
+sp --> emv: severityInteger
+emv -> emv_ce: put("severity", severityInteger)
+emv_ce --> emv
+emv --> emv: true
+emv -> emv: validateHandleTimeAndMaxDuration()
+emv -> sp: getValue("handleTime")
+sp --> emv: handleInteger
+emv -> sp: getValue("maxDuration")
+sp --> emv: durationInteger
+emv -> emv_ce: put("handleTime", handleInteger)
+emv_ce --> emv
+emv -> emv_ce: put("maxDuration", durationInteger)
+emv_ce --> emv
+emv --> emv: true
+emv -> emv: validateRoadAndVillage()
+emv -> sp: getValue("roadName")
+sp --> emv: roadIdString
+emv -> sp: getValue("village")
+sp --> emv: villageIdString
+emv -> acc: villageWithRoadExists(villageIdString, roadIdString)
+acc -> streetIDvil**: StreetID(roadIdString)
+activate streetIDvil
+streetIDvil --> acc: streetIDvil
+deactivate streetIDvil
+note left #Pink: look up village in villageMap \ncheck if streetIdvil in MutableSet
+acc --> emv: true
+emv -> emv_ce: put("roadName", roadIdString)
+emv_ce --> emv
+emv -> emv_ce: put("village", villageIdString)
+emv_ce --> emv
+emv --> emv: true
+emv -> acc: addEmergency(emc_ce)
+acc -> emergencyID**: EmergencyID(idInteger)
+activate emergencyID
+emergencyID --> acc: emergencyID
+deactivate emergencyID
+acc -> emergencySeverity**: EmergencySeverity.???
+activate emergencySeverity
+emergencySeverity --> acc: emergencySeverity
+deactivate emergencySeverity
+acc -> emergencyType**: EmergencyType.???
+activate emergencyType
+emergencyType --> acc: emergencyType
+deactivate emergencyType
+note left #Pink: an example, of which factory method could be called
+alt EmergencyType == FIRE
+alt EmergencySeverity == LOW
+acc -> rf_f: createLowSeverityRequirement()
+rf_f -> requirement**: Requirement(police: List<PoliceVehicleType, fire: List<FireVehicleType>, medical: List<MedicalVehicleType>, ladderLength: Int, criminals: Int, patients: Int, water: Int)
+activate requirement
+requirement --> rf_f: requirement
+deactivate requirement
+rf_f --> acc: requirement
+else EmergencySeverity == MEDIUM
+else EmergencySeverity == HIGH
+end
+else EmergencyType == ACCIDENT
+else EmergencyType == CRIME
+else EmergencyType == MEDICAL
+end
+acc -> emergency**: Emergency(id: EmergencyID, street: StreetID, tickInteger, handleInteger, durationInteger, emergencySeverity, emergencyType, requirement)
+activate emergency
+emergency --> acc: emergency
+deactivate emergency
+note left #Pink: create correct emergencySeverity based off severityInteger \ncreate correct emergencyType based off typeString \nget correct RequirementFactory based off emergenyType \ncall correct method from factory based off emergencySeverity \nget requirement back \nlook up streetID in VillageMap with villageIdString and roadIdString \ncreate emergency \nadd emergency to List in emergencyTickMap at corresponding tick
+acc --> emv:
+end
+emv --> cs: acc
+/'
+    class EmergencyValidator {
+        -parser: JsonParser
+        -currentEmergency: Map<String, String>?
+        -emergencyIds: MutableSet<Int>
+        +validateData(Accumulator sb): Accumulator
+        -setCurrentEmergencyEmpty()
+        -validateId(): Boolean
+        -validateTick(): Boolean
+        -validateEmergencyType()
+        -validateSeverity()
+        -validateHandleTimeAndMaxDuration()
+        -validateRoadAndVillage()
+    }
+'/
+
+/'- run validate function'/
+cs -> evv**: EventValidator(sp)
+note left#LightBlue: EventValidator object omits calls to\n private variables
+cs -> evv: ValidateData(acc)
+loop for events
+evv -> evv: setCurrentEventEmpty()
+evv --> evv:
+evv -> sp: loadNext("Event")
+sp --> evv:
+evv -> evv: validateId()
+evv -> sp: getValue("id")
+sp --> evv: idInt
+evv --> evv: true
+evv -> evv: validateType()
+evv -> sp: getValue("type")
+sp --> evv: typeString
+evv --> evv: true
+evv -> evv: validateTick()
+evv -> sp: getValue("tick")
+sp --> evv: tickInt
+evv --> evv: true
+evv -> evv: validateDuration()
+evv -> sp: getValue("duration")
+sp --> evv: durationInt
+evv --> evv: true
+evv -> evv: validateFactor()
+alt type == RUSH_HOUR OR TRAFFIC_JAM OR CONSTRUCTION_SITE
+evv -> sp: getValue("factor")
+sp --> evv: factorInt
+else else
+evv -> sp: isValuePresent("factor")
+sp --> evv: false
+end
+evv --> evv: true
+evv -> evv: validateRoadTypes()
+alt type == RUSH_HOUR
+evv -> sp: getValue("roadTypes")
+sp --> evv: ListOfRoadTypeStrings
+else else
+evv -> sp: isValuePresent("roadTypes")
+sp --> evv: false
+end
+evv --> evv: true
+evv -> evv: validateOneWayStreet()
+alt type == CONSTRUCTION_SITE
+evv -> sp: getValue("oneWayStreet")
+sp --> evv: oneWayBoolean
+else else
+evv -> sp: isValuePresent("oneWayStreet")
+sp --> evv: false
+end
+evv --> evv: true
+evv -> evv: validateVehicleId()
+alt type == VEHICLE_UNAVAILABLE
+evv -> sp: getValue("VehicleID")
+sp --> evv: vehicleIdInt
+evv -> acc: vehicleWithIdExists(vehicleIdInt)
+acc -> vehicleIdExists**: VehicleID(vehicleIdInt)
+activate vehicleIdExists
+vehicleIdExists --> acc: vehicleIdExists
+deactivate vehicleIdExists
+note left #Pink: look up vehicle in vehicleMap \ncheck that vehicle is present
+acc --> evv: true
+else else
+evv -> sp: isValuePresent("VehicleID")
+sp --> evv: false
+end
+evv --> evv: true
+evv -> evv: validateSourceTarget()
+alt type == TRAFFIC_JAM OR CONSTRUCTION_SITE OR ROAD_CLOSURE
+evv -> sp: getValue("source")
+sp --> evv: sourceIdString
+evv -> sp: getValue("target")
+sp --> evv: targetIdString
+evv -> acc: streetWithSourceTargetExists(sourceIdInt, targetIdInt)
+acc -> vertexIDSource**: VertexID(sourceIdString)
+activate vertexIDSource
+vertexIDSource --> acc: vertexIDSource
+deactivate vertexIDSource
+acc -> vertexIDTarget**: VertexID(targetIdString)
+activate vertexIDTarget
+vertexIDTarget --> acc: vertexIDTarget
+deactivate vertexIDTarget
+note left #Pink: look up vertexIDSource and vertexIDTarget in vertexMap\ncheck that they share one StreetID in their street lists
+acc --> evv: true
+else else
+evv -> sp: isValuePresent("source")
+sp --> evv: false
+evv -> sp: isValuePresent("target")
+sp --> evv: false
+end
+evv --> evv: true
+evv -> acc: addEvent(currentEvent)
+acc -> eventID**: EventID(idInt)
+activate eventID
+eventID --> acc: eventID
+deactivate eventID
+acc -> event**: RoadClosureEvent OR TrafficJamEvent OR ConstructionSiteEvent OR VehicleUnavailableEvent OR RushHourEvent
+activate event
+event --> acc: event
+deactivate event
+note left #Pink: determine correct event constructor based on typeString \ncreate event (if necessary first create different IDs) \nadd event to List in eventTickMap at corresponding tick
+acc --> evv:
+end
+evv --> cs: acc
+/'
+    class EventValidator {
+        -parser: JsonParser
+        -currentEvent: Map<String, String>?
+        -eventIds: MutableSet<Int>
+        +validateData(Accumulator sb): Accumulator
+        -setCurrentEventEmpty()
+        -validateId(): Boolean
+        -validateType(): Boolean
+        -validateTick(): Boolean
+        -validateDuration(): Boolean
+        -validateRoadTypes(): Boolean
+        -validateFactor(): Boolean
+        -validateOneWayStreet(): Boolean
+        -validateSourceTarget(): Boolean
+        -validateVehicleId(): Boolean
+    }
+'/
+
+cs --> cs: acc
+cs -> l: initInfo(scenario, true)
+l --> cs:
+
+/'create sim objects'/
+cs -> cs: createSimulationObjects(acc)
+cs -> acc: getEmergencyTickMap()
+acc --> cs: Map<Int, List<Emergency>>
+note left #Pink: Order Lists in emergenyTickMap by ID and return map
+cs -> acc: getEventTickMap()
+acc --> cs: Map<Int, List<Event>>
+cs -> acc: getVehicleMap()
+acc --> cs: Map<VehicleID, Vehicle>
+cs -> acc: getVehicleIdToStationId()
+acc --> cs: Map<VehicleID, StationID>
+note left #Pink: Order Lists in eventTickMap by ID and return map
+cs -> acc: getCounty()
+acc -> cou**: County(List<Vertex>, List<Street>, List<BaseStation>)
+activate cou
+cou --> acc: cou
+deactivate cou
+note left #Pink: 3 Lists are extracted from respective maps
+acc --> cs: cou
+cs -> f**: Finder(cou)
+activate f
+f --> cs: f
+deactivate f
+cs -> emc**: EMC(Map<Int, List<Emergency>>, Map<Int, List<Event>>, Map<VehicleID, StationID>, Map<VehicleID, Vehicle>)
+activate emc
+emc --> cs: emc
+deactivate emc
+
+cs -> emergencyPhase**: EmergencyPhase(emc, l, f)
+activate emergencyPhase
+emergencyPhase --> cs: emergencyPhase
+deactivate emergencyPhase
+cs -> planningPhase**: PlanningPhase(emc, l, f)
+activate planningPhase
+planningPhase --> cs: planningPhase
+deactivate planningPhase
+cs -> allocationPhase**: AllocationPhase(emc, l, f)
+activate allocationPhase
+allocationPhase --> cs: allocationPhase
+deactivate allocationPhase
+cs -> requestPhase**: RequestPhase(emc, l, f)
+activate requestPhase
+requestPhase --> cs: requestPhase
+deactivate requestPhase
+cs -> updatePhase**: UpdatePhase(emc, l, f)
+activate updatePhase
+updatePhase --> cs: updatePhase
+deactivate updatePhase
+
+cs --> cs: true
+cs --> m: cs
+
+m -> cs: run()
+
+@enduml
