@@ -1,0 +1,157 @@
+{
+  "$defs": {
+    "event": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "type": {
+          "enum": [
+            "RUSH_HOUR",
+            "TRAFFIC_JAM",
+            "CONSTRUCTION_SITE",
+            "ROAD_CLOSURE",
+            "VEHICLE_UNAVAILABLE"
+          ]
+        },
+        "tick": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "duration": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "roadTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "MAIN_STREET",
+              "SIDE_STREET",
+              "COUNTY_ROAD"
+            ]
+          }
+        },
+        "factor": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "oneWayStreet": {
+          "type": "boolean"
+        },
+        "source": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "target": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "vehicleID": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "minTicks": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "staffID": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        }
+      },
+      "anyOf": [
+        {
+          "properties": {
+            "type": {
+              "const": "RUSH_HOUR"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "tick",
+            "roadTypes",
+            "factor",
+            "duration"
+          ]
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "TRAFFIC_JAM"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "tick",
+            "factor",
+            "source",
+            "target",
+            "duration"
+          ]
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "CONSTRUCTION_SITE"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "tick",
+            "source",
+            "target",
+            "oneWayStreet",
+            "factor",
+            "duration"
+          ]
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "ROAD_CLOSURE"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "tick",
+            "source",
+            "target",
+            "duration"
+          ]
+        },
+        {
+          "properties": {
+            "type": {
+              "const": "VEHICLE_UNAVAILABLE"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "tick",
+            "vehicleID",
+            "duration"
+          ]
+        }
+      ],
+      "type": "object"
+    }
+  }
+}

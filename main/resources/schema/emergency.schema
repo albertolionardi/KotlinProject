@@ -1,0 +1,59 @@
+{
+  "$defs": {
+    "emergency": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "tick": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "village": {
+          "type": "string"
+        },
+        "roadName": {
+          "type": "string"
+        },
+        "emergencyType": {
+          "enum": [
+            "FIRE",
+            "ACCIDENT",
+            "CRIME",
+            "MEDICAL"
+          ]
+        },
+        "severity": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "handleTime": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "maxDuration": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 2147483647
+        }
+      },
+      "required": [
+        "id",
+        "tick",
+        "emergencyType",
+        "village",
+        "roadName",
+        "severity",
+        "handleTime",
+        "maxDuration"
+      ],
+      "type": "object"
+    }
+  }
+}

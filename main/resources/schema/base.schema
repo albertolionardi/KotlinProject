@@ -1,0 +1,82 @@
+{
+  "$defs": {
+    "base": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "baseType": {
+          "enum": [
+            "FIRE_STATION",
+            "POLICE_STATION",
+            "HOSPITAL"
+          ]
+        },
+        "location": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "staff": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "dogs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "doctors": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        }
+      },
+      "anyOf": [
+        {
+          "properties": {
+            "baseType": {
+              "const": "POLICE_STATION"
+            }
+          },
+          "required": [
+            "id",
+            "location",
+            "staff",
+            "dogs"
+          ]
+        },
+        {
+          "properties": {
+            "baseType": {
+              "const": "FIRE_STATION"
+            }
+          },
+          "required": [
+            "id",
+            "location",
+            "staff"
+          ]
+        },
+        {
+          "properties": {
+            "baseType": {
+              "const": "HOSPITAL"
+            }
+          },
+          "required": [
+            "id",
+            "location",
+            "staff",
+            "doctors"
+          ]
+        }
+      ],
+      "type": "object"
+    }
+  }
+}

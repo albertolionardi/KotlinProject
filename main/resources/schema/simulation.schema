@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "additionalProperties": false,
+  "properties": {
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "event.schema#/$defs/event"
+      },
+      "minItems": 1
+    },
+    "emergencyCalls": {
+      "type": "array",
+      "items": {
+        "$ref": "emergency.schema#/$defs/emergency"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "events",
+    "emergencyCalls"
+  ],
+  "title": "Simulation",
+  "type": "object"
+}

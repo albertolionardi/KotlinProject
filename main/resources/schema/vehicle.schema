@@ -1,0 +1,179 @@
+{
+  "$defs": {
+    "vehicle": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "baseID": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "vehicleType": {
+          "enum": [
+            "POLICE_CAR",
+            "K9_POLICE_CAR",
+            "POLICE_MOTORCYCLE",
+            "FIRE_TRUCK_WATER",
+            "FIRE_TRUCK_TECHNICAL",
+            "FIRE_TRUCK_LADDER",
+            "FIREFIGHTER_TRANSPORTER",
+            "AMBULANCE",
+            "EMERGENCY_DOCTOR_CAR"
+          ]
+        },
+        "vehicleHeight": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "staffCapacity": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12
+        },
+        "criminalCapacity": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        },
+        "waterCapacity": {
+          "type": "integer",
+         "enum": [600, 1200, 2400]
+        },
+        "ladderLength": {
+          "type": "integer",
+          "minimum": 30,
+          "maximum": 70
+        }
+      },
+      "anyOf": [
+        {
+          "properties": {
+            "vehicleType": {
+              "const": "POLICE_CAR"
+            }
+          },
+          "required": [
+            "id",
+            "baseID",
+            "vehicleHeight",
+            "staffCapacity",
+            "criminalCapacity"
+          ]
+        },
+        {
+          "properties": {
+            "vehicleType": {
+              "const": "K9_POLICE_CAR"
+            }
+          },
+          "required": [
+            "id",
+            "baseID",
+            "vehicleHeight",
+            "staffCapacity"
+          ]
+        },
+        {
+          "properties": {
+            "vehicleType": {
+              "const": "POLICE_MOTORCYCLE"
+            }
+          },
+          "required": [
+            "id",
+            "baseID",
+            "vehicleHeight",
+            "staffCapacity"
+          ]
+        },
+        {
+          "properties": {
+            "vehicleType": {
+              "const": "FIRE_TRUCK_WATER"
+            }
+          },
+          "required": [
+            "id",
+            "baseID",
+            "vehicleHeight",
+            "staffCapacity",
+            "waterCapacity"
+          ]
+        },
+        {
+          "properties": {
+            "vehicleType": {
+              "const": "FIRE_TRUCK_TECHNICAL"
+            }
+          },
+          "required": [
+            "id",
+            "baseID",
+            "vehicleHeight",
+            "staffCapacity"
+          ]
+        },
+        {
+          "properties": {
+            "vehicleType": {
+              "const": "FIRE_TRUCK_LADDER"
+            }
+          },
+          "required": [
+            "id",
+            "baseID",
+            "vehicleHeight",
+            "staffCapacity",
+            "ladderLength"
+          ]
+        },
+        {
+          "properties": {
+            "vehicleType": {
+              "const": "FIREFIGHTER_TRANSPORTER"
+            }
+          },
+          "required": [
+            "id",
+            "baseID",
+            "vehicleHeight",
+            "staffCapacity"
+          ]
+        },
+        {
+          "properties": {
+            "vehicleType": {
+              "const": "AMBULANCE"
+            }
+          },
+          "required": [
+            "id",
+            "baseID",
+            "vehicleHeight",
+            "staffCapacity"
+          ]
+        },
+        {
+          "properties": {
+            "vehicleType": {
+              "const": "EMERGENCY_DOCTOR_CAR"
+            }
+          },
+          "required": [
+            "id",
+            "baseID",
+            "vehicleHeight",
+            "staffCapacity"
+          ]
+        }
+      ],
+      "type": "object"
+    }
+  }
+}
